@@ -325,28 +325,319 @@
             resize();
             addEventListener("resize", resize);
 
-            /* ---------- audio (tiny bleeps) ---------- */
-            let AC = null;
-            function beep(f, d = 0.06, type = "square", g = 0.05) {
-                try {
-                    if (!AC)
-                        AC = new (
-                            window.AudioContext || window.webkitAudioContext
-                        )();
-                    const o = AC.createOscillator(),
-                        v = AC.createGain();
-                    o.type = type;
-                    o.frequency.value = f;
-                    v.gain.setValueAtTime(g, AC.currentTime);
-                    v.gain.exponentialRampToValueAtTime(
-                        0.0001,
-                        AC.currentTime + d,
+            /* ---------- audio ---------- */
+            const SFX_DEFS = {
+                ui_click: { file: "ui_click.wav", volume: 0.25, cooldown: 45 },
+                ball_launch: { file: "ball_launch.wav", volume: 0.35, cooldown: 55 },
+                pin_hit_soft: {
+                    file: [
+                        "pin_hit_soft.wav",
+                        "pin_hit_soft_01.wav",
+                        "pin_hit_soft_02.wav",
+                        "pin_hit_soft_03.wav",
+                    ],
+                    volume: 0.12,
+                    cooldown: 38,
+                    pitch: [0.9, 1.15],
+                    category: "pin",
+                },
+                pin_hit_hard: {
+                    file: [
+                        "pin_hit_hard.wav",
+                        "pin_hit_hard_01.wav",
+                        "pin_hit_hard_02.wav",
+                    ],
+                    volume: 0.18,
+                    cooldown: 55,
+                    pitch: [0.92, 1.12],
+                    category: "pin",
+                },
+                ui_cancel: { file: "ui_cancel.wav", volume: 0.22, cooldown: 55 },
+                wall_hit: { file: "wall_hit.wav", volume: 0.14, cooldown: 80 },
+                tulip_open: { file: "tulip_open.wav", volume: 0.45, cooldown: 80 },
+                tulip_close: { file: "tulip_close.wav", volume: 0.35, cooldown: 80 },
+                tentacle_emerge: {
+                    file: "tentacle_emerge.wav",
+                    volume: 0.45,
+                    cooldown: 180,
+                },
+                tentacle_wiggle_loop: {
+                    file: "tentacle_wiggle_loop.wav",
+                    volume: 0.08,
+                    loop: true,
+                },
+                tentacle_grab: {
+                    file: "tentacle_grab.wav",
+                    volume: 0.55,
+                    cooldown: 120,
+                },
+                ball_deflect: {
+                    file: "ball_deflect.wav",
+                    volume: 0.45,
+                    cooldown: 90,
+                    pitch: [0.9, 1.1],
+                },
+                start_in: { file: "start_in.wav", volume: 0.5, cooldown: 80 },
+                slot_spin_start: {
+                    file: "slot_spin_start.wav",
+                    volume: 0.4,
+                    cooldown: 250,
+                },
+                slot_reel_stop: {
+                    file: [
+                        "slot_reel_stop.wav",
+                        "slot_reel_stop_01.wav",
+                        "slot_reel_stop_02.wav",
+                        "slot_reel_stop_03.wav",
+                    ],
+                    volume: 0.35,
+                    cooldown: 70,
+                    pitch: [0.92, 1.12],
+                },
+                slot_near_miss: {
+                    file: "slot_near_miss.wav",
+                    volume: 0.38,
+                    cooldown: 250,
+                },
+                jackpot_small: {
+                    file: "jackpot_small.wav",
+                    volume: 0.65,
+                    cooldown: 500,
+                },
+                jackpot_big: {
+                    file: "jackpot_big.wav",
+                    volume: 0.8,
+                    cooldown: 900,
+                },
+                attack_ready: {
+                    file: "attack_ready.wav",
+                    volume: 0.5,
+                    cooldown: 300,
+                },
+                attack_hit: { file: "attack_hit.wav", volume: 0.6, cooldown: 90 },
+                miss_drop: { file: "miss_drop.wav", volume: 0.22, cooldown: 140 },
+            };
+
+            class AudioManager {
+                constructor(defs) {
+                    this.defs = defs;
+                    this.ctx = null;
+                    this.buffers = new Map();
+                    this.loading = new Map();
+                    this.loops = new Map();
+                    this.lastPlay = new Map();
+                    this.pinDuckUntil = 0;
+                    this.master = 0.9;
+                }
+                ensureContext() {
+                    if (this.ctx) return this.ctx;
+                    const Ctx = window.AudioContext || window.webkitAudioContext;
+                    if (!Ctx) return null;
+                    this.ctx = new Ctx();
+                    return this.ctx;
+                }
+                unlock() {
+                    const ctx2 = this.ensureContext();
+                    if (!ctx2) return;
+                    if (ctx2.state === "suspended") ctx2.resume().catch(() => {});
+                    const gain = ctx2.createGain();
+                    gain.gain.value = 0.0001;
+                    gain.connect(ctx2.destination);
+                    const osc = ctx2.createOscillator();
+                    osc.frequency.value = 1;
+                    osc.connect(gain);
+                    osc.start();
+                    osc.stop(ctx2.currentTime + 0.01);
+                    this.preload();
+                }
+                preload() {
+                    Object.entries(this.defs).forEach(([id, def]) =>
+                        this.filesFor(def).forEach((file) => this.load(id, file)),
                     );
-                    o.connect(v).connect(AC.destination);
-                    o.start();
-                    o.stop(AC.currentTime + d);
-                } catch (e) {}
+                }
+                filesFor(def) {
+                    return Array.isArray(def.file) ? def.file : [def.file];
+                }
+                pickFile(def) {
+                    const files = this.filesFor(def);
+                    return files[Math.floor(Math.random() * files.length)];
+                }
+                bufferKey(id, file) {
+                    return id + ":" + file;
+                }
+                load(id, preferredFile = null) {
+                    const def = this.defs[id];
+                    const ctx2 = this.ensureContext();
+                    if (!def || !ctx2) return Promise.resolve(null);
+                    const file = preferredFile || this.filesFor(def)[0];
+                    const key = this.bufferKey(id, file);
+                    if (this.buffers.has(key) || this.loading.has(key)) {
+                        return this.loading.get(key);
+                    }
+                    const task = fetch("assets/sfx/" + file)
+                        .then((res) => (res.ok ? res.arrayBuffer() : null))
+                        .then((buf) => (buf ? ctx2.decodeAudioData(buf) : null))
+                        .then((audioBuffer) => {
+                            if (audioBuffer) this.buffers.set(key, audioBuffer);
+                            return audioBuffer;
+                        })
+                        .catch(() => null);
+                    this.loading.set(key, task);
+                    return task;
+                }
+                pitchFor(def, options) {
+                    if (options.pitch) return options.pitch;
+                    if (!def.pitch) return 1;
+                    const [min, max] = def.pitch;
+                    return min + Math.random() * (max - min);
+                }
+                play(id, options = {}) {
+                    const def = this.defs[id];
+                    const ctx2 = this.ensureContext();
+                    if (!def || !ctx2) return;
+                    if (ctx2.state === "suspended") return;
+                    const nowMs = performance.now();
+                    const cooldown = options.cooldown ?? def.cooldown ?? 0;
+                    const last = this.lastPlay.get(id) || -Infinity;
+                    if (nowMs - last < cooldown) return;
+                    this.lastPlay.set(id, nowMs);
+                    if (id === "jackpot_big") this.duckPins(3200);
+                    const baseVolume = options.volume ?? def.volume ?? 0.3;
+                    const duck = def.category === "pin" && nowMs < this.pinDuckUntil ? 0.35 : 1;
+                    const volume = baseVolume * this.master * duck;
+                    const pitch = this.pitchFor(def, options);
+                    const file = this.pickFile(def);
+                    const key = this.bufferKey(id, file);
+                    const buffer = this.buffers.get(key);
+                    if (buffer) {
+                        this.playBuffer(buffer, volume, pitch, options);
+                    } else {
+                        this.load(id, file);
+                        this.playFallback(id, volume, pitch);
+                    }
+                }
+                playBuffer(buffer, volume, pitch, options = {}) {
+                    const ctx2 = this.ctx;
+                    const src = ctx2.createBufferSource();
+                    const gain = ctx2.createGain();
+                    src.buffer = buffer;
+                    src.playbackRate.value = pitch;
+                    gain.gain.setValueAtTime(volume, ctx2.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(
+                        0.0001,
+                        ctx2.currentTime + (options.fadeOut ?? buffer.duration),
+                    );
+                    src.connect(gain).connect(ctx2.destination);
+                    src.start();
+                }
+                playFallback(id, volume, pitch = 1) {
+                    const ctx2 = this.ctx;
+                    const shape = {
+                        ui_click: [880, 0.06, "sine"],
+                        ui_cancel: [420, 0.08, "triangle"],
+                        ball_launch: [320, 0.12, "triangle"],
+                        pin_hit_soft: [2200, 0.04, "sine"],
+                        pin_hit_hard: [1500, 0.06, "square"],
+                        wall_hit: [420, 0.05, "triangle"],
+                        tulip_open: [760, 0.16, "triangle"],
+                        tulip_close: [280, 0.08, "square"],
+                        tentacle_emerge: [120, 0.2, "sawtooth"],
+                        tentacle_grab: [90, 0.12, "sawtooth"],
+                        ball_deflect: [840, 0.1, "triangle"],
+                        start_in: [990, 0.16, "sine"],
+                        slot_spin_start: [260, 0.24, "sawtooth"],
+                        slot_reel_stop: [540, 0.06, "square"],
+                        slot_near_miss: [620, 0.18, "triangle"],
+                        jackpot_small: [1320, 0.28, "triangle"],
+                        jackpot_big: [880, 0.45, "sawtooth"],
+                        attack_ready: [160, 0.28, "sawtooth"],
+                        attack_hit: [180, 0.18, "square"],
+                        miss_drop: [180, 0.08, "triangle"],
+                    }[id] || [440, 0.08, "sine"];
+                    const osc = ctx2.createOscillator();
+                    const gain = ctx2.createGain();
+                    osc.type = shape[2];
+                    osc.frequency.value = shape[0] * pitch;
+                    gain.gain.setValueAtTime(volume, ctx2.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(
+                        0.0001,
+                        ctx2.currentTime + shape[1],
+                    );
+                    osc.connect(gain).connect(ctx2.destination);
+                    osc.start();
+                    osc.stop(ctx2.currentTime + shape[1]);
+                }
+                loop(id, options = {}) {
+                    if (this.loops.has(id)) return;
+                    const def = this.defs[id];
+                    const ctx2 = this.ensureContext();
+                    if (!def || !ctx2 || ctx2.state === "suspended") return;
+                    const startLoop = (buffer) => {
+                        if (!buffer || this.loops.has(id)) return;
+                        const src = ctx2.createBufferSource();
+                        const gain = ctx2.createGain();
+                        src.buffer = buffer;
+                        src.loop = true;
+                        src.playbackRate.value = this.pitchFor(def, options);
+                        gain.gain.setValueAtTime(0.0001, ctx2.currentTime);
+                        gain.gain.linearRampToValueAtTime(
+                            (options.volume ?? def.volume ?? 0.08) * this.master,
+                            ctx2.currentTime + 0.12,
+                        );
+                        src.connect(gain).connect(ctx2.destination);
+                        src.start();
+                        this.loops.set(id, { src, gain });
+                    };
+                    const file = this.filesFor(def)[0];
+                    const buffer = this.buffers.get(this.bufferKey(id, file));
+                    if (buffer) startLoop(buffer);
+                    else this.load(id, file).then(startLoop);
+                }
+                stop(id) {
+                    const loop = this.loops.get(id);
+                    if (!loop || !this.ctx) return;
+                    const t = this.ctx.currentTime;
+                    loop.gain.gain.cancelScheduledValues(t);
+                    loop.gain.gain.setValueAtTime(loop.gain.gain.value, t);
+                    loop.gain.gain.linearRampToValueAtTime(0.0001, t + 0.12);
+                    setTimeout(() => {
+                        try {
+                            loop.src.stop();
+                        } catch (e) {}
+                    }, 150);
+                    this.loops.delete(id);
+                }
+                duckPins(ms) {
+                    this.pinDuckUntil = Math.max(this.pinDuckUntil, performance.now() + ms);
+                }
             }
+
+            const audioManager = new AudioManager(SFX_DEFS);
+            window.SFX_DEFS = SFX_DEFS;
+            window.audioManager = audioManager;
+            function playSound(soundName, options) {
+                audioManager.play(soundName, options);
+            }
+            function loopSound(soundName, options) {
+                audioManager.loop(soundName, options);
+            }
+            function stopSound(soundName) {
+                audioManager.stop(soundName);
+            }
+            addEventListener(
+                "click",
+                () => {
+                    audioManager.unlock();
+                },
+                { once: true, capture: true },
+            );
+            addEventListener(
+                "keydown",
+                () => {
+                    audioManager.unlock();
+                },
+                { once: true },
+            );
 
             /* ---------- board construction ---------- */
             const pins = []; // {x,y,r,hot}
@@ -387,6 +678,30 @@
             const SIDE_RAIL_BUMPERS = [
                 { side: -1, a0: 160 * D2R, a1: 200 * D2R, radius: R - 72 },
                 { side: 1, a0: -20 * D2R, a1: 20 * D2R, radius: R - 72 },
+            ];
+            const flippers = [
+                {
+                    side: 1,
+                    x: 310,
+                    y: 862,
+                    len: 126,
+                    rest: 8 * D2R,
+                    active: -33 * D2R,
+                    ang: 8 * D2R,
+                    lastAng: 8 * D2R,
+                    hot: 0,
+                },
+                {
+                    side: -1,
+                    x: 690,
+                    y: 862,
+                    len: 126,
+                    rest: 172 * D2R,
+                    active: 213 * D2R,
+                    ang: 172 * D2R,
+                    lastAng: 172 * D2R,
+                    hot: 0,
+                },
             ];
 
             /* --- top splitter pins: staggered, with the enlarged slot kept clear --- */
@@ -607,6 +922,8 @@
                 power = 0.8,
                 autoFire = true,
                 autoTimer = 0;
+            let tentacleSpawnTimer = 45;
+            let frameCount = 0;
             let fever = 0; // frames remaining
             let feverCatch = 0;
             let reserve = 0; // 保留 (queued spins) max 4
@@ -644,6 +961,7 @@
                 winPulse: 0,
                 result: null,
                 winLines: [],
+                stoppedReels: [false, false, false],
                 lastMult: 0,
             };
 
@@ -695,7 +1013,7 @@
                     lastY: py,
                     still: 0,
                 });
-                beep(620, 0.04, "square", 0.03);
+                playSound("ball_launch");
                 ui();
             }
 
@@ -703,6 +1021,10 @@
             const G = 0.165,
                 SUB = 8;
             function step() {
+                frameCount++;
+                maybeSpawnTentacleGuard();
+                updateFlippers();
+                let pinSoundPlayed = false;
                 for (const b of balls) {
                     if (b.dead) continue;
                     b.age++;
@@ -726,6 +1048,7 @@
                                 b.vy -= (1 + 0.28) * vn * ny;
                                 b.vx *= 0.992;
                                 b.vy *= 0.992; // rail friction (keeps the climb alive)
+                                playSound("wall_hit");
                             }
                         }
                         /* slot panel housing = solid rounded block, top center */
@@ -752,18 +1075,18 @@
                                 b.y = p.y + ny * rr;
                                 const vn = b.vx * nx + b.vy * ny;
                                 if (vn < 0) {
+                                    const impact = Math.abs(vn);
                                     const e = 0.52 + Math.random() * 0.1;
                                     b.vx -= (1 + e) * vn * nx;
                                     b.vy -= (1 + e) * vn * ny;
                                     b.vx += (Math.random() - 0.5) * 0.35; // 釘のクセ
                                     p.hot = 1;
-                                    if (Math.abs(vn) > 1.6)
-                                        beep(
-                                            1900 + Math.random() * 900,
-                                            0.025,
-                                            "triangle",
-                                            0.015,
+                                    if (!pinSoundPlayed && impact > 0.75) {
+                                        playSound(
+                                            impact > 3.2 ? "pin_hit_hard" : "pin_hit_soft",
                                         );
+                                        pinSoundPlayed = true;
+                                    }
                                 }
                             }
                         }
@@ -787,9 +1110,11 @@
                                 b.vx += -ny * wm.spd * 26;
                                 b.vy += nx * wm.spd * 26;
                                 wm.spd += wm.dir * 0.02;
-                                beep(340, 0.05, "sawtooth", 0.02);
+                                playSound("wall_hit", { volume: 0.1 });
                             }
                         }
+                        collideActiveTentacles(b);
+                        collideFlippers(b);
                         /* pockets */
                         for (const pk of pockets) {
                             if (!pk.open) continue;
@@ -809,6 +1134,7 @@
                         /* out hole — drained at the bottom of the bowl */
                         if (b.y > CY + R * 0.91) {
                             b.dead = true;
+                            playSound("miss_drop");
                         }
                     }
                     b.trail.push(b.x, b.y);
@@ -818,7 +1144,10 @@
                     b.lastX = b.x;
                     b.lastY = b.y;
                     if (b.still > 150) b.dead = true;
-                    if (b.age > 1800) b.dead = true;
+                    if (b.age > 1800) {
+                        b.dead = true;
+                        playSound("miss_drop", { volume: 0.12 });
+                    }
                 }
                 for (let i = balls.length - 1; i >= 0; i--)
                     if (balls[i].dead) balls.splice(i, 1);
@@ -829,6 +1158,72 @@
                     wm.spd += (0.07 * wm.dir - wm.spd) * 0.02;
                 }
                 updateTentacleFX();
+            }
+            function flipperTip(fl) {
+                return {
+                    x: fl.x + Math.cos(fl.ang) * fl.len,
+                    y: fl.y + Math.sin(fl.ang) * fl.len,
+                };
+            }
+            function updateFlippers() {
+                for (const fl of flippers) {
+                    fl.lastAng = fl.ang;
+                    const reactive = balls.some(
+                        (b) =>
+                            !b.dead &&
+                            b.y > 735 &&
+                            b.y < 910 &&
+                            b.vy > -4 &&
+                            (fl.side > 0
+                                ? b.x > 230 && b.x < 500
+                                : b.x > 500 && b.x < 770),
+                    );
+                    const periodic = (frameCount + (fl.side > 0 ? 0 : 18)) % 118 < 12;
+                    const target = reactive || periodic ? fl.active : fl.rest;
+                    const speed = reactive ? 0.5 : 0.26;
+                    fl.ang += (target - fl.ang) * speed;
+                    fl.hot = Math.max(0, fl.hot * 0.88 + (reactive ? 0.18 : 0));
+                }
+            }
+            function collideFlippers(b) {
+                for (const fl of flippers) {
+                    const tip = flipperTip(fl);
+                    const p = closestPointOnSegment(b.x, b.y, fl.x, fl.y, tip.x, tip.y);
+                    let dx = b.x - p.x,
+                        dy = b.y - p.y,
+                        d = Math.hypot(dx, dy);
+                    const hitR = b.r + 11;
+                    if (d >= hitR) continue;
+                    if (d < 0.001) {
+                        const sx = tip.x - fl.x,
+                            sy = tip.y - fl.y,
+                            sd = Math.hypot(sx, sy) || 1;
+                        dx = -sy / sd;
+                        dy = sx / sd;
+                        d = 1;
+                    }
+                    let nx = dx / d,
+                        ny = dy / d;
+                    if (ny > 0.25) {
+                        nx = -nx;
+                        ny = -ny;
+                    }
+                    b.x = p.x + nx * hitR;
+                    b.y = p.y + ny * hitR;
+                    const vn = b.vx * nx + b.vy * ny;
+                    if (vn < 0) {
+                        b.vx -= (1 + 0.82) * vn * nx;
+                        b.vy -= (1 + 0.82) * vn * ny;
+                    }
+                    const swing = Math.abs(fl.ang - fl.lastAng) * 120;
+                    b.vx += fl.side * (2.8 + swing * 0.45);
+                    b.vy = Math.min(b.vy, -10.5 - swing * 0.9);
+                    b.still = 0;
+                    fl.hot = 1;
+                    playSound("attack_hit", { volume: 0.24, cooldown: 120 });
+                    return true;
+                }
+                return false;
             }
             function collideRect(b, x, y, w, h) {
                 let cx2 = Math.max(x, Math.min(b.x, x + w)),
@@ -908,7 +1303,7 @@
                         b.vy -= (1 + 1.25) * vn * ny;
                         b.vx += -ny * rail.side * 1.2;
                         b.vy += nx * rail.side * 1.2;
-                        beep(260, 0.04, "square", 0.025);
+                        playSound("wall_hit");
                     }
                 }
             }
@@ -917,31 +1312,63 @@
             function popup(x, y, t, c) {
                 FX.push({ x, y, t, c, life: 60 });
             }
-            function playSound(name) {
-                if (name === "tentacle_grab") {
-                    beep(120, 0.08, "sawtooth", 0.05);
-                    setTimeout(() => beep(68, 0.12, "sawtooth", 0.04), 50);
-                }
-            }
-            function spawnTentacleTulip(pk) {
-                if (Math.random() > 0.45) return;
-                const count = 1 + Math.floor(Math.random() * 3);
+            function spawnTentacleTulip(pk, force = false) {
+                if (!force && Math.random() > 0.45) return false;
+                const count = 2 + Math.floor(Math.random() * 3);
+                const lean = pk.x < CX ? 0.16 : -0.16;
                 tentacleFX.push({
-                    x: pk.x,
-                    y: pk.y - 12,
+                    x: pk.x + (Math.random() - 0.5) * 12,
+                    y: pk.y - 8,
                     age: 0,
-                    life: 150,
+                    life: 120 + Math.floor(Math.random() * 50),
+                    guardPocket: pk,
                     tentacles: Array.from({ length: count }, (_, i) => ({
                         base:
                             -Math.PI / 2 +
                             (count === 1 ? 0 : (i / (count - 1) - 0.5) * 1.25) +
-                            (Math.random() - 0.5) * 0.28,
+                            lean +
+                            (Math.random() - 0.5) * 0.38,
                         joints: 3 + Math.floor(Math.random() * 3),
                         seed: Math.random() * 1000,
                         hitCooldown: 0,
                     })),
                 });
-                popup(pk.x, pk.y - 72, "触手!", "#ffd93b");
+                popup(pk.x, pk.y - 72, "邪魔触手!", "#ffffff");
+                playSound("tentacle_emerge");
+                loopSound("tentacle_wiggle_loop");
+                return true;
+            }
+            function hasActiveTentacleGuard(pk) {
+                return tentacleFX.some(
+                    (fx) => fx.guardPocket === pk && fx.age < fx.life - 24,
+                );
+            }
+            function ballNearTulipMouth(pk) {
+                return balls.some(
+                    (b) =>
+                        !b.dead &&
+                        Math.abs(b.x - pk.x) < pk.w + 52 &&
+                        b.y > pk.y - 118 &&
+                        b.y < pk.y + 18 &&
+                        b.vy > -1.5,
+                );
+            }
+            function maybeSpawnTentacleGuard() {
+                if (balls.length === 0) return;
+                tentacleSpawnTimer--;
+                if (tentacleSpawnTimer > 0) return;
+                tentacleSpawnTimer = 28 + Math.floor(Math.random() * 70);
+                if (tentacleFX.length > 5) return;
+                const tulips = pockets.filter(
+                    (pk) => pk.type === "tulip" && pk.open && !hasActiveTentacleGuard(pk),
+                );
+                if (!tulips.length) return;
+                const threatened = tulips.filter(ballNearTulipMouth);
+                const pool = threatened.length ? threatened : tulips;
+                const spawnChance = threatened.length ? 0.72 : 0.18;
+                if (Math.random() > spawnChance) return;
+                const pk = pool[Math.floor(Math.random() * pool.length)];
+                spawnTentacleTulip(pk, true);
             }
             function rotateBallVelocity(b) {
                 const speed = Math.hypot(b.vx, b.vy) || 2;
@@ -1026,36 +1453,40 @@
                 }
                 return false;
             }
+            function collideActiveTentacles(b) {
+                for (const fx of tentacleFX) {
+                    if (fx.age < 8 || fx.age > fx.life - 12) continue;
+                    for (const tentacle of fx.tentacles) {
+                        const points = tentaclePoints(fx, tentacle);
+                        if (!collideTentacleBall(b, points)) continue;
+                        if (tentacle.hitCooldown <= 0) {
+                            tentacle.hitCooldown = 18;
+                            rotateBallVelocity(b);
+                            playSound("tentacle_grab");
+                            playSound("ball_deflect", { cooldown: 110 });
+                            popup(b.x, b.y - 24, "入れない!", "#ffffff");
+                        }
+                        return true;
+                    }
+                }
+                return false;
+            }
             function updateTentacleFX() {
                 for (let i = tentacleFX.length - 1; i >= 0; i--) {
                     const fx = tentacleFX[i];
                     fx.age++;
                     for (const tentacle of fx.tentacles) {
                         tentacle.hitCooldown = Math.max(0, tentacle.hitCooldown - 1);
-                        if (fx.age < 12) continue;
-                        const points = tentaclePoints(fx, tentacle);
-                        for (const b of balls) {
-                            if (b.dead) continue;
-                            if (collideTentacleBall(b, points)) {
-                                if (tentacle.hitCooldown <= 0) {
-                                    tentacle.hitCooldown = 18;
-                                    rotateBallVelocity(b);
-                                    playSound("tentacle_grab");
-                                    popup(b.x, b.y - 24, "バチン!", "#ffffff");
-                                }
-                                break;
-                            }
-                        }
                     }
                     if (fx.age > fx.life) tentacleFX.splice(i, 1);
                 }
+                if (tentacleFX.length === 0) stopSound("tentacle_wiggle_loop");
             }
             function onCatch(pk) {
                 if (pk.type === "start") {
                     stock += 3;
                     popup(pk.x, pk.y - 30, "+3", "#ffd93b");
-                    beep(880, 0.1, "square", 0.05);
-                    beep(1320, 0.12, "square", 0.04);
+                    playSound("start_in");
                     if (slot.spin) {
                         if (reserve < 4) {
                             reserve++;
@@ -1066,14 +1497,13 @@
                     pk.catchCount++;
                     stock += 5;
                     popup(pk.x, pk.y - 30, "+5", "#37c8f0");
-                    spawnTentacleTulip(pk);
-                    beep(740, 0.1, "triangle", 0.05);
+                    playSound("tulip_open");
+                    setTimeout(() => playSound("tulip_close", { volume: 0.2 }), 180);
                 } else if (pk.type === "attacker") {
                     stock += 15;
                     feverCatch++;
                     popup(pk.x, pk.y - 34, "+15", "#ff4fa3");
-                    beep(520, 0.08, "square", 0.06);
-                    beep(1040, 0.1, "square", 0.05);
+                    playSound("attack_hit");
                     if (feverCatch >= 10)
                         endFever("10カウント達成!ラウンド終了!");
                 }
@@ -1087,6 +1517,7 @@
                 slot.result = null;
                 slot.winLines = [];
                 slot.lastMult = 0;
+                slot.stoppedReels = [false, false, false];
                 slot.vel = Array.from(
                     { length: SLOT_CELLS },
                     (_, i) => 0.42 + i * 0.025 + Math.random() * 0.12,
@@ -1103,7 +1534,7 @@
                 const win = Math.random() < 1 / 4;
                 slot.result = win ? makeWinningGrid() : makeLosingGrid();
                 say("スロット回転中…!");
-                beep(440, 0.15, "sawtooth", 0.04);
+                playSound("slot_spin_start");
             }
             function randomSymbol() {
                 return Math.floor(Math.random() * SYMS.length);
@@ -1147,6 +1578,16 @@
                     0,
                 );
             }
+            function hasNearMiss(grid) {
+                return SLOT_LINES.some((line) => {
+                    const values = line.map((idx) => grid[idx]);
+                    return (
+                        values[0] === values[1] ||
+                        values[1] === values[2] ||
+                        values[0] === values[2]
+                    );
+                });
+            }
             function updateSlot() {
                 if (!slot.spin) {
                     slot.flash *= 0.96;
@@ -1163,14 +1604,17 @@
                         let diff = (target - cur + SYMS.length) % SYMS.length;
                         if (diff > 0.06) slot.reel[i] += Math.min(diff, 0.12);
                         else {
-                            if (
-                                slot.reel[i] !== target &&
-                                i === SLOT_CELLS - 1 &&
-                                slot.t >= slot.stopT[SLOT_CELLS - 1]
-                            ) {
-                                beep(300, 0.08, "square", 0.04);
-                            }
                             slot.reel[i] = target;
+                            const col = i % 3;
+                            const columnDone = [col, col + 3, col + 6].every(
+                                (idx) => slot.t >= slot.stopT[idx],
+                            );
+                            if (columnDone && !slot.stoppedReels[col]) {
+                                slot.stoppedReels[col] = true;
+                                playSound("slot_reel_stop", {
+                                    pitch: 0.94 + col * 0.08 + Math.random() * 0.04,
+                                });
+                            }
                         }
                     }
                 }
@@ -1182,6 +1626,7 @@
                         bigWin();
                     } else {
                         say("ハズレ…次いくナリ!");
+                        playSound(hasNearMiss(slot.result) ? "slot_near_miss" : "miss_drop");
                         if (reserve > 0) {
                             reserve--;
                             setTimeout(startSlot, 500);
@@ -1214,10 +1659,8 @@
                         slot.lastMult +
                         "玉!アタッカー全開!",
                 );
-                const seq = [523, 659, 784, 1046, 784, 1046, 1318];
-                seq.forEach((f, i) =>
-                    setTimeout(() => beep(f, 0.18, "square", 0.07), i * 130),
-                );
+                playSound(slot.lastMult >= 50 ? "jackpot_big" : "jackpot_small");
+                playSound("attack_ready");
                 for (let i = 0; i < 80; i++)
                     FX.push({
                         x: CX + (Math.random() - 0.5) * 300,
@@ -1316,6 +1759,9 @@
 
                 /* pockets */
                 for (const pk of pockets) drawPocket(pk);
+
+                /* auto flippers */
+                for (const fl of flippers) drawFlipper(fl);
 
                 /* tentacles */
                 for (const fx of tentacleFX) drawTentacleFX(fx);
@@ -1473,6 +1919,18 @@
                     ctx.arc(wm.x, wm.y, wm.r + BALL_R - 6, 0, 7);
                     ctx.stroke();
                 }
+                ctx.strokeStyle = "rgba(55,200,240,.9)";
+                ctx.lineWidth = 18 + BALL_R * 2;
+                ctx.globalAlpha = 0.22;
+                for (const fl of flippers) {
+                    const tip = flipperTip(fl);
+                    ctx.beginPath();
+                    ctx.moveTo(fl.x, fl.y);
+                    ctx.lineTo(tip.x, tip.y);
+                    ctx.stroke();
+                }
+                ctx.globalAlpha = 1;
+                ctx.lineWidth = 1;
                 ctx.strokeStyle = "rgba(255,255,255,.8)";
                 for (const b of balls) {
                     ctx.beginPath();
@@ -1485,6 +1943,44 @@
                 ctx.fillText("slotSafeZone", SLOT_SAFE_ZONE.x + 8, SLOT_SAFE_ZONE.y + 18);
                 ctx.fillStyle = "rgba(255,79,163,.95)";
                 ctx.fillText("slotHitRect", SLOT_HIT_RECT.x + 8, SLOT_HIT_RECT.y + 18);
+                ctx.restore();
+            }
+            function drawFlipper(fl) {
+                const tip = flipperTip(fl);
+                const glow = 0.2 + fl.hot * 0.55;
+                ctx.save();
+                ctx.lineCap = "round";
+                ctx.lineJoin = "round";
+                ctx.shadowColor = `rgba(55,200,240,${glow})`;
+                ctx.shadowBlur = 12 + fl.hot * 12;
+                ctx.strokeStyle = "#111116";
+                ctx.lineWidth = 27;
+                ctx.beginPath();
+                ctx.moveTo(fl.x, fl.y);
+                ctx.lineTo(tip.x, tip.y);
+                ctx.stroke();
+                const g = ctx.createLinearGradient(fl.x, fl.y, tip.x, tip.y);
+                g.addColorStop(0, "#37c8f0");
+                g.addColorStop(0.52, "#e8edf6");
+                g.addColorStop(1, "#ff4fa3");
+                ctx.strokeStyle = g;
+                ctx.lineWidth = 19;
+                ctx.beginPath();
+                ctx.moveTo(fl.x, fl.y);
+                ctx.lineTo(tip.x, tip.y);
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = "#202027";
+                ctx.strokeStyle = "#b14ce8";
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(fl.x, fl.y, 15, 0, 7);
+                ctx.fill();
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(tip.x, tip.y, 9, 0, 7);
+                ctx.fillStyle = "#fff6c0";
+                ctx.fill();
                 ctx.restore();
             }
             function drawPocket(pk) {
@@ -1703,15 +2199,20 @@
             }
             track.addEventListener("pointerdown", (e) => {
                 dragging = true;
+                playSound("ui_click");
                 trackEv(e);
             });
             addEventListener("pointermove", (e) => {
                 if (dragging) trackEv(e);
             });
             addEventListener("pointerup", () => (dragging = false));
-            $("fireBtn").addEventListener("click", launch);
+            $("fireBtn").addEventListener("click", () => {
+                playSound("ui_click");
+                launch();
+            });
             $("autoBtn").addEventListener("click", () => {
                 autoFire = !autoFire;
+                playSound(autoFire ? "ui_click" : "ui_cancel");
                 $("autoBtn").classList.toggle("on", autoFire);
                 $("autoBtn").textContent =
                     "AUTO 連射 " + (autoFire ? "ON" : "OFF");
