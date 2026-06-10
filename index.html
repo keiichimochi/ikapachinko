@@ -1,0 +1,1689 @@
+<!doctype html>
+<html lang="ja">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>UFO PACHINKO — 宇宙烈伝</title>
+        <style>
+            :root {
+                --bg: #3b3b40;
+                --board: #0a0a0c;
+                --pin: #e8c520;
+                --neon-purple: #b14ce8;
+                --neon-pink: #ff4fa3;
+                --neon-cyan: #37c8f0;
+                --metal: #cfd2d8;
+                --win: #ff3b3b;
+            }
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+            html,
+            body {
+                height: 100%;
+                background: var(--bg);
+                overflow: hidden;
+                font-family:
+                    "Hiragino Kaku Gothic ProN", "Yu Gothic", monospace;
+                -webkit-user-select: none;
+                user-select: none;
+                touch-action: none;
+            }
+            #wrap {
+                display: flex;
+                height: 100%;
+                align-items: center;
+                justify-content: center;
+                gap: 14px;
+                padding: 10px;
+            }
+            #boardBox {
+                position: relative;
+                height: 100%;
+                aspect-ratio: 1000/1080;
+                max-width: calc(100vw - 190px);
+            }
+            canvas {
+                width: 100%;
+                height: 100%;
+                display: block;
+                border-radius: 18px;
+                box-shadow:
+                    0 0 0 6px #1c1c20,
+                    0 0 60px rgba(177, 76, 232, 0.25),
+                    0 14px 50px rgba(0, 0, 0, 0.7);
+            }
+            /* ---- control panel ---- */
+            #panel {
+                width: 160px;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                color: #ddd;
+            }
+            .card {
+                background: #1a1a1f;
+                border: 1px solid #2c2c34;
+                border-radius: 12px;
+                padding: 10px;
+            }
+            .lbl {
+                font-size: 10px;
+                letter-spacing: 0.18em;
+                color: #8a8a96;
+                margin-bottom: 6px;
+            }
+            .num {
+                font-size: 24px;
+                font-weight: 800;
+                color: #ffd93b;
+                font-variant-numeric: tabular-nums;
+                text-shadow: 0 0 12px rgba(255, 217, 59, 0.5);
+            }
+            .num.small {
+                font-size: 18px;
+                color: var(--neon-cyan);
+                text-shadow: 0 0 10px rgba(55, 200, 240, 0.5);
+            }
+            #powerWrap {
+                height: 220px;
+                display: flex;
+                gap: 10px;
+                align-items: stretch;
+            }
+            #powerTrack {
+                flex: 1;
+                background: #0d0d10;
+                border-radius: 8px;
+                position: relative;
+                cursor: pointer;
+                border: 1px solid #2c2c34;
+                overflow: hidden;
+            }
+            #powerFill {
+                position: absolute;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                height: 55%;
+                background: linear-gradient(to top, #37c8f0, #b14ce8, #ff4fa3);
+                transition: height 0.05s;
+            }
+            #powerKnob {
+                position: absolute;
+                left: -4px;
+                right: -4px;
+                height: 14px;
+                bottom: calc(55% - 7px);
+                background: var(--metal);
+                border-radius: 4px;
+                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+            }
+            #fireBtn {
+                width: 100%;
+                padding: 14px 0;
+                border: none;
+                border-radius: 12px;
+                cursor: pointer;
+                font-size: 15px;
+                font-weight: 900;
+                letter-spacing: 0.1em;
+                color: #1a0505;
+                background: linear-gradient(180deg, #ffd93b, #e8a020);
+                box-shadow:
+                    0 4px 0 #9c6a10,
+                    0 0 24px rgba(255, 217, 59, 0.35);
+            }
+            #fireBtn:active {
+                transform: translateY(3px);
+                box-shadow: 0 1px 0 #9c6a10;
+            }
+            #autoBtn {
+                width: 100%;
+                padding: 9px 0;
+                border: 1px solid #3a3a44;
+                border-radius: 10px;
+                cursor: pointer;
+                background: #101014;
+                color: #9a9aa6;
+                font-weight: 700;
+                font-size: 12px;
+                letter-spacing: 0.12em;
+            }
+            #autoBtn.on {
+                background: #2a1240;
+                border-color: var(--neon-purple);
+                color: #e8c0ff;
+                box-shadow: 0 0 16px rgba(177, 76, 232, 0.45);
+            }
+            #msg {
+                min-height: 34px;
+                font-size: 11px;
+                line-height: 1.5;
+                color: #b9b9c6;
+            }
+            #oddsList {
+                display: grid;
+                grid-template-columns: 1fr;
+                gap: 3px;
+                font-size: 11px;
+                line-height: 1.25;
+                color: #ddd;
+                font-variant-numeric: tabular-nums;
+            }
+            #oddsList .top {
+                color: #ffd93b;
+                font-weight: 900;
+                text-shadow: 0 0 10px rgba(255, 217, 59, 0.45);
+            }
+            #feverBadge {
+                display: none;
+                text-align: center;
+                padding: 6px;
+                border-radius: 10px;
+                font-weight: 900;
+                color: #fff;
+                background: linear-gradient(90deg, #ff3b3b, #ff8a00, #ff3b3b);
+                animation: fv 0.5s infinite alternate;
+                letter-spacing: 0.15em;
+            }
+            @keyframes fv {
+                from {
+                    filter: brightness(0.85);
+                }
+                to {
+                    filter: brightness(1.3);
+                }
+            }
+            @media (max-width: 680px) {
+                #wrap {
+                    flex-direction: column;
+                    gap: 8px;
+                }
+                #boardBox {
+                    max-width: 100%;
+                    width: 100%;
+                    height: auto;
+                    flex: 1;
+                    min-height: 0;
+                }
+                #panel {
+                    width: 100%;
+                    flex-direction: row;
+                    flex-wrap: wrap;
+                }
+                .card {
+                    flex: 1;
+                    min-width: 100px;
+                }
+                #powerWrap {
+                    height: 90px;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div id="wrap">
+            <div id="boardBox"><canvas id="cv"></canvas></div>
+            <div id="panel">
+                <div class="card">
+                    <div class="lbl">持ち玉</div>
+                    <div class="num" id="ballCount">250</div>
+                </div>
+                <div class="card">
+                    <div class="lbl">大当り回数</div>
+                    <div class="num small" id="winCount">0</div>
+                </div>
+                <div class="card">
+                    <div class="lbl">倍率</div>
+                    <div id="oddsList"></div>
+                </div>
+                <div class="card">
+                    <div class="lbl">発射強度</div>
+                    <div id="powerWrap">
+                        <div id="powerTrack">
+                            <div id="powerFill"></div>
+                            <div id="powerKnob"></div>
+                        </div>
+                    </div>
+                </div>
+                <button id="fireBtn">発 射</button>
+                <button id="autoBtn" class="on">AUTO 連射 ON</button>
+                <div id="feverBadge">★ FEVER ★</div>
+                <div class="card">
+                    <div id="msg">
+                        左下から打ち出し→外周レールで上昇→釘の海へ。中央スタートチャッカーでスロット始動だ。
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            "use strict";
+            /* ============================================================
+   UFO PACHINKO 宇宙烈伝 — physics pachinko simulator
+   ============================================================ */
+            const W = 1000,
+                H = 1080;
+            const CX = 500,
+                CY = 520,
+                R = 478; // circular board
+            const BALL_R = 8,
+                BALL_DIAMETER = BALL_R * 2;
+            const SLOT_RECT = {
+                x: 316,
+                y: 225,
+                w: 368,
+                h: 300,
+            };
+            const SLOT_HIT_RECT = {
+                x: SLOT_RECT.x + 18,
+                y: SLOT_RECT.y + 54,
+                w: SLOT_RECT.w - 36,
+                h: SLOT_RECT.h - 102,
+            };
+            const SLOT_SAFE_PADDING = BALL_DIAMETER * 1.5;
+            const SLOT_SAFE_ZONE = {
+                x: SLOT_HIT_RECT.x - SLOT_SAFE_PADDING,
+                y: SLOT_HIT_RECT.y - SLOT_SAFE_PADDING,
+                w: SLOT_HIT_RECT.w + SLOT_SAFE_PADDING * 2,
+                h: SLOT_HIT_RECT.h + SLOT_SAFE_PADDING * 2,
+            };
+            const NO_PIN_ZONE = SLOT_SAFE_ZONE;
+            const cv = document.getElementById("cv");
+            const ctx = cv.getContext("2d");
+            let DPR = 1;
+            function resize() {
+                DPR = Math.min(window.devicePixelRatio || 1, 2);
+                cv.width = W * DPR;
+                cv.height = H * DPR;
+                ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+            }
+            resize();
+            addEventListener("resize", resize);
+
+            /* ---------- audio (tiny bleeps) ---------- */
+            let AC = null;
+            function beep(f, d = 0.06, type = "square", g = 0.05) {
+                try {
+                    if (!AC)
+                        AC = new (
+                            window.AudioContext || window.webkitAudioContext
+                        )();
+                    const o = AC.createOscillator(),
+                        v = AC.createGain();
+                    o.type = type;
+                    o.frequency.value = f;
+                    v.gain.setValueAtTime(g, AC.currentTime);
+                    v.gain.exponentialRampToValueAtTime(
+                        0.0001,
+                        AC.currentTime + d,
+                    );
+                    o.connect(v).connect(AC.destination);
+                    o.start();
+                    o.stop(AC.currentTime + d);
+                } catch (e) {}
+            }
+
+            /* ---------- board construction ---------- */
+            const pins = []; // {x,y,r,hot}
+            const windmills = []; // {x,y,r,ang,spd,dir}
+            const pockets = []; // {x,y,w,type,label,open}
+            const removedPins = [];
+            function inRectWithRadius(x, y, r, rect) {
+                return (
+                    x + r > rect.x &&
+                    x - r < rect.x + rect.w &&
+                    y + r > rect.y &&
+                    y - r < rect.y + rect.h
+                );
+            }
+            function pin(x, y, r = 5) {
+                if (inRectWithRadius(x, y, r, NO_PIN_ZONE)) {
+                    removedPins.push({ x, y, r });
+                    return;
+                }
+                pins.push({ x, y, r, hot: 0 });
+            }
+            function arcPins(cx, cy, rad, a0, a1, n, r = 5) {
+                for (let i = 0; i < n; i++) {
+                    const a = a0 + ((a1 - a0) * i) / (n - 1);
+                    pin(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad, r);
+                }
+            }
+            function linePins(x0, y0, x1, y1, n, r = 5) {
+                for (let i = 0; i < n; i++) {
+                    const t = n === 1 ? 0 : i / (n - 1);
+                    pin(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, r);
+                }
+            }
+            function staggerPins(points) {
+                for (const [x, y] of points) pin(x, y);
+            }
+            const D2R = Math.PI / 180;
+            const SIDE_RAIL_BUMPERS = [
+                { side: -1, a0: 160 * D2R, a1: 200 * D2R, radius: R - 72 },
+                { side: 1, a0: -20 * D2R, a1: 20 * D2R, radius: R - 72 },
+            ];
+
+            /* --- top splitter pins: staggered, with the enlarged slot kept clear --- */
+            staggerPins([
+                [248, 184],
+                [318, 158],
+                [386, 145],
+                [455, 154],
+                [522, 140],
+                [594, 152],
+                [666, 161],
+                [736, 186],
+
+                [214, 226],
+                [260, 246],
+                [742, 239],
+                [786, 264],
+
+                [202, 292],
+                [252, 318],
+                [750, 314],
+                [801, 344],
+            ]);
+            /* --- pins replacing the removed slot title strip --- */
+            staggerPins([
+                [337, 232],
+                [391, 242],
+                [448, 232],
+                [506, 244],
+                [560, 234],
+                [617, 242],
+                [667, 232],
+            ]);
+            /* --- outer return pins around 10 and 2 o'clock --- */
+            staggerPins([
+                [160, 304],
+                [184, 352],
+                [151, 405],
+                [206, 458],
+                [838, 315],
+                [812, 366],
+                [850, 417],
+                [795, 468],
+            ]);
+            /* --- side lanes beside the enlarged slot --- */
+            staggerPins([
+                [278, 220],
+                [724, 232],
+                [238, 252],
+                [270, 280],
+                [232, 338],
+                [284, 330],
+                [266, 366],
+                [238, 414],
+                [286, 430],
+                [272, 462],
+                [246, 510],
+                [282, 552],
+
+                [764, 262],
+                [729, 291],
+                [718, 348],
+                [764, 337],
+                [732, 381],
+                [760, 430],
+                [714, 445],
+                [724, 476],
+                [754, 522],
+                [716, 566],
+            ]);
+            /* --- windmill guide pins: catch above, release below --- */
+            staggerPins([
+                [207, 262],
+                [244, 270],
+                [204, 370],
+                [258, 390],
+                [758, 284],
+                [795, 292],
+                [742, 398],
+                [796, 414],
+
+                [322, 560],
+                [382, 565],
+                [296, 676],
+                [408, 650],
+                [628, 560],
+                [676, 565],
+                [588, 653],
+                [708, 682],
+            ]);
+            /* --- split below slot: avoids a clean vertical drop into START --- */
+            staggerPins([
+                [360, 556],
+                [648, 556],
+                [404, 565],
+                [458, 590],
+                [545, 586],
+                [602, 568],
+                [438, 604],
+                [482, 646],
+                [526, 638],
+                [568, 604],
+            ]);
+            /* --- funnel toward start chucker --- */
+            linePins(350, 586, 452, 648, 5);
+            linePins(652, 592, 548, 648, 5);
+            linePins(330, 640, 280, 760, 5);
+            linePins(670, 640, 720, 760, 5);
+            /* --- guards around tulips --- */
+            linePins(165, 640, 255, 612, 5);
+            linePins(835, 640, 745, 612, 5);
+            staggerPins([
+                [270, 742],
+                [318, 752],
+                [334, 740],
+                [376, 742],
+                [392, 754],
+                [424, 746],
+
+                [576, 748],
+                [608, 756],
+                [624, 744],
+                [666, 742],
+                [682, 754],
+                [730, 742],
+            ]);
+            /* --- lower field / attacker guards --- */
+            linePins(354, 830, 366, 874, 3);
+            linePins(646, 830, 634, 874, 3);
+            arcPins(CX, 1010, 170, -160 * D2R, -110 * D2R, 5);
+            arcPins(CX, 1010, 170, -70 * D2R, -20 * D2R, 5);
+            /* --- scattered field pins --- */
+            [
+                [250, 540],
+                [750, 540],
+                [205, 705],
+                [795, 705],
+                [330, 860],
+                [670, 860],
+                [262, 800],
+                [738, 800],
+                [374, 690],
+                [626, 690],
+                [410, 760],
+                [590, 760],
+                [500, 840],
+            ].forEach((p) => pin(p[0], p[1]));
+
+            /* --- windmills (yellow 3-blade spinners from the photo) --- */
+            function windmill(x, y, dir) {
+                windmills.push({
+                    x,
+                    y,
+                    r: 30,
+                    ang: Math.random() * 6.28,
+                    spd: 0.07 * dir,
+                    dir,
+                });
+            }
+            windmill(222, 316, -1);
+            windmill(780, 336, 1);
+            windmill(360, 616, 1);
+            windmill(642, 628, -1);
+
+            const LOWER_TULIP_ENTRANCES = [
+                {
+                    side: "left",
+                    leftPin: { x: 334, y: 740 },
+                    rightPin: { x: 376, y: 742 },
+                },
+                {
+                    side: "right",
+                    leftPin: { x: 624, y: 744 },
+                    rightPin: { x: 666, y: 742 },
+                },
+            ];
+            function lowerTulipEntranceWidths() {
+                return LOWER_TULIP_ENTRANCES.map((entry) => {
+                    const d = Math.hypot(
+                        entry.rightPin.x - entry.leftPin.x,
+                        entry.rightPin.y - entry.leftPin.y,
+                    );
+                    return {
+                        side: entry.side,
+                        clearWidth: d - 10, // subtract two 5px pin radii
+                    };
+                });
+            }
+
+            /* --- pockets --- */
+            function pocket(x, y, w, type, label) {
+                pockets.push({
+                    x,
+                    y,
+                    w,
+                    type,
+                    label,
+                    open: type !== "attacker",
+                    glow: 0,
+                    catchCount: 0,
+                });
+            }
+            pocket(500, 705, 30, "start", "START"); // center start chucker (spins the slot)
+            pocket(360, 712, 24, "tulip", "🛸"); // small UFO tulips
+            pocket(640, 712, 24, "tulip", "🛸");
+            pocket(228, 668, 30, "tulip", "🛸"); // outer UFO pockets
+            pocket(772, 668, 30, "tulip", "🛸");
+            pocket(355, 792, 32, "tulip", "🛸");
+            pocket(645, 792, 32, "tulip", "🛸");
+            pocket(500, 902, 46, "attacker", "ATTACK"); // big attacker (fever only)
+
+            /* ---------- game state ---------- */
+            const balls = [];
+            const FX = []; // particles / popup texts
+            const tentacleFX = [];
+            let stock = 250,
+                wins = 0,
+                power = 0.8,
+                autoFire = true,
+                autoTimer = 0;
+            let fever = 0; // frames remaining
+            let feverCatch = 0;
+            let reserve = 0; // 保留 (queued spins) max 4
+            let debugGeometry = false;
+            const SLOT_SYMBOLS = [
+                { sym: "🦑", mult: 100 },
+                { sym: "🍺", mult: 50 },
+                { sym: "🦀", mult: 30 },
+                { sym: "🐙", mult: 20 },
+                { sym: "🐠", mult: 12 },
+                { sym: "⭐️", mult: 8 },
+                { sym: "🌊", mult: 5 },
+            ];
+            const SYMS = SLOT_SYMBOLS.map((s) => s.sym);
+            const MULTS = SLOT_SYMBOLS.map((s) => s.mult);
+            const symbolHitCounts = Array(SLOT_SYMBOLS.length).fill(0);
+            const SLOT_CELLS = 9;
+            const SLOT_LINES = [
+                [0, 1, 2],
+                [3, 4, 5],
+                [6, 7, 8],
+                [0, 3, 6],
+                [1, 4, 7],
+                [2, 5, 8],
+                [0, 4, 8],
+                [2, 4, 6],
+            ];
+            const slot = {
+                spin: false,
+                reel: Array.from({ length: SLOT_CELLS }, (_, i) => i),
+                vel: Array(SLOT_CELLS).fill(0),
+                stopT: Array(SLOT_CELLS).fill(0),
+                t: 0,
+                flash: 0,
+                winPulse: 0,
+                result: null,
+                winLines: [],
+                lastMult: 0,
+            };
+
+            const $ = (id) => document.getElementById(id);
+            function ui() {
+                $("ballCount").textContent = stock;
+                $("winCount").textContent = wins;
+                $("feverBadge").style.display = fever > 0 ? "block" : "none";
+                renderOdds();
+            }
+            function say(t) {
+                $("msg").textContent = t;
+            }
+            function renderOdds() {
+                const odds = $("oddsList");
+                odds.replaceChildren(
+                    ...SLOT_SYMBOLS.map((entry, i) => {
+                        const item = document.createElement("div");
+                        item.className = entry.mult === 100 ? "top" : "";
+                        item.textContent =
+                            entry.sym + " x" + entry.mult + " / " + symbolHitCounts[i] + "回";
+                        return item;
+                    }),
+                );
+            }
+
+            /* ---------- launching ---------- */
+            function launch() {
+                if (stock <= 0) {
+                    say("玉切れ!リロードは…ないナリ。F5で再挑戦!");
+                    return;
+                }
+                stock--;
+                const a = 118 * D2R; // bottom-left on the rim
+                const px = CX + Math.cos(a) * (R - 14),
+                    py = CY + Math.sin(a) * (R - 14);
+                const sp =
+                    (15.5 + power * 13.5) * 2 + (Math.random() - 0.5) * 1.0; // tangential speed (2x power)
+                balls.push({
+                    x: px,
+                    y: py,
+                    vx: -Math.sin(a) * sp,
+                    vy: Math.cos(a) * sp,
+                    r: BALL_R,
+                    trail: [],
+                    dead: false,
+                    age: 0,
+                    lastX: px,
+                    lastY: py,
+                    still: 0,
+                });
+                beep(620, 0.04, "square", 0.03);
+                ui();
+            }
+
+            /* ---------- physics ---------- */
+            const G = 0.165,
+                SUB = 8;
+            function step() {
+                for (const b of balls) {
+                    if (b.dead) continue;
+                    b.age++;
+                    for (let s = 0; s < SUB; s++) {
+                        b.vy += G / SUB;
+                        b.x += b.vx / SUB;
+                        b.y += b.vy / SUB;
+
+                        /* circular outer wall */
+                        const dx = b.x - CX,
+                            dy = b.y - CY,
+                            d = Math.hypot(dx, dy);
+                        if (d > R - b.r) {
+                            const nx = dx / d,
+                                ny = dy / d;
+                            b.x = CX + nx * (R - b.r);
+                            b.y = CY + ny * (R - b.r);
+                            const vn = b.vx * nx + b.vy * ny;
+                            if (vn > 0) {
+                                b.vx -= (1 + 0.28) * vn * nx; // restitution .28
+                                b.vy -= (1 + 0.28) * vn * ny;
+                                b.vx *= 0.992;
+                                b.vy *= 0.992; // rail friction (keeps the climb alive)
+                            }
+                        }
+                        /* slot panel housing = solid rounded block, top center */
+                        collideRect(
+                            b,
+                            SLOT_HIT_RECT.x,
+                            SLOT_HIT_RECT.y,
+                            SLOT_HIT_RECT.w,
+                            SLOT_HIT_RECT.h,
+                        );
+                        collideSideRailBumpers(b);
+
+                        /* pins */
+                        for (const p of pins) {
+                            const ddx = b.x - p.x,
+                                ddy = b.y - p.y,
+                                rr = b.r + p.r;
+                            const dd2 = ddx * ddx + ddy * ddy;
+                            if (dd2 < rr * rr && dd2 > 0.001) {
+                                const dd = Math.sqrt(dd2),
+                                    nx = ddx / dd,
+                                    ny = ddy / dd;
+                                b.x = p.x + nx * rr;
+                                b.y = p.y + ny * rr;
+                                const vn = b.vx * nx + b.vy * ny;
+                                if (vn < 0) {
+                                    const e = 0.52 + Math.random() * 0.1;
+                                    b.vx -= (1 + e) * vn * nx;
+                                    b.vy -= (1 + e) * vn * ny;
+                                    b.vx += (Math.random() - 0.5) * 0.35; // 釘のクセ
+                                    p.hot = 1;
+                                    if (Math.abs(vn) > 1.6)
+                                        beep(
+                                            1900 + Math.random() * 900,
+                                            0.025,
+                                            "triangle",
+                                            0.015,
+                                        );
+                                }
+                            }
+                        }
+                        /* windmills: circle hit + rotational kick */
+                        for (const wm of windmills) {
+                            const ddx = b.x - wm.x,
+                                ddy = b.y - wm.y,
+                                rr = b.r + wm.r - 6;
+                            const dd = Math.hypot(ddx, ddy);
+                            if (dd < rr && dd > 0.001) {
+                                const nx = ddx / dd,
+                                    ny = ddy / dd;
+                                b.x = wm.x + nx * rr;
+                                b.y = wm.y + ny * rr;
+                                const vn = b.vx * nx + b.vy * ny;
+                                if (vn < 0) {
+                                    b.vx -= (1 + 0.5) * vn * nx;
+                                    b.vy -= (1 + 0.5) * vn * ny;
+                                }
+                                // tangential kick from spin
+                                b.vx += -ny * wm.spd * 26;
+                                b.vy += nx * wm.spd * 26;
+                                wm.spd += wm.dir * 0.02;
+                                beep(340, 0.05, "sawtooth", 0.02);
+                            }
+                        }
+                        /* pockets */
+                        for (const pk of pockets) {
+                            if (!pk.open) continue;
+                            if (
+                                Math.abs(b.x - pk.x) < pk.w * 0.62 &&
+                                b.y > pk.y - 6 &&
+                                b.y < pk.y + 18 &&
+                                b.vy > 0
+                            ) {
+                                b.dead = true;
+                                pk.glow = 1;
+                                onCatch(pk);
+                                break;
+                            }
+                        }
+                        if (b.dead) break;
+                        /* out hole — drained at the bottom of the bowl */
+                        if (b.y > CY + R * 0.91) {
+                            b.dead = true;
+                        }
+                    }
+                    b.trail.push(b.x, b.y);
+                    if (b.trail.length > 16) b.trail.splice(0, 2);
+                    const moved = Math.hypot(b.x - b.lastX, b.y - b.lastY);
+                    b.still = moved < 0.8 ? b.still + 1 : 0;
+                    b.lastX = b.x;
+                    b.lastY = b.y;
+                    if (b.still > 150) b.dead = true;
+                    if (b.age > 1800) b.dead = true;
+                }
+                for (let i = balls.length - 1; i >= 0; i--)
+                    if (balls[i].dead) balls.splice(i, 1);
+                for (const p of pins) p.hot *= 0.9;
+                for (const pk of pockets) pk.glow *= 0.93;
+                for (const wm of windmills) {
+                    wm.ang += wm.spd;
+                    wm.spd += (0.07 * wm.dir - wm.spd) * 0.02;
+                }
+                updateTentacleFX();
+            }
+            function collideRect(b, x, y, w, h) {
+                let cx2 = Math.max(x, Math.min(b.x, x + w)),
+                    cy2 = Math.max(y, Math.min(b.y, y + h));
+                let dx = b.x - cx2,
+                    dy = b.y - cy2,
+                    d = Math.hypot(dx, dy);
+                if (d < 0.001 && b.x > x && b.x < x + w && b.y > y && b.y < y + h) {
+                    const left = b.x - x,
+                        right = x + w - b.x,
+                        top = b.y - y,
+                        bottom = y + h - b.y;
+                    const m = Math.min(left, right, top, bottom);
+                    if (m === left) {
+                        dx = -1;
+                        dy = 0;
+                        cx2 = x;
+                        cy2 = b.y;
+                    } else if (m === right) {
+                        dx = 1;
+                        dy = 0;
+                        cx2 = x + w;
+                        cy2 = b.y;
+                    } else if (m === top) {
+                        dx = 0;
+                        dy = -1;
+                        cx2 = b.x;
+                        cy2 = y;
+                    } else {
+                        dx = 0;
+                        dy = 1;
+                        cx2 = b.x;
+                        cy2 = y + h;
+                    }
+                    d = 1;
+                }
+                if (d < b.r) {
+                    const nx = dx / d,
+                        ny = dy / d;
+                    b.x = cx2 + nx * b.r;
+                    b.y = cy2 + ny * b.r;
+                    const vn = b.vx * nx + b.vy * ny;
+                    if (vn < 0) {
+                        b.vx -= (1 + 0.4) * vn * nx;
+                        b.vy -= (1 + 0.4) * vn * ny;
+                    }
+                    if (ny < -0.5) {
+                        b.vx += b.x < x + w / 2 ? -0.12 : 0.12;
+                    }
+                }
+            }
+            function angleBetween(a, a0, a1) {
+                const tau = Math.PI * 2;
+                const n = (v) => ((v % tau) + tau) % tau;
+                a = n(a);
+                a0 = n(a0);
+                a1 = n(a1);
+                return a0 <= a1 ? a >= a0 && a <= a1 : a >= a0 || a <= a1;
+            }
+            function collideSideRailBumpers(b) {
+                for (const rail of SIDE_RAIL_BUMPERS) {
+                    const dx = b.x - CX,
+                        dy = b.y - CY,
+                        dist = Math.hypot(dx, dy);
+                    if (dist < 0.001) continue;
+                    const angle = Math.atan2(dy, dx);
+                    if (!angleBetween(angle, rail.a0, rail.a1)) continue;
+                    const gap = dist - rail.radius;
+                    if (Math.abs(gap) > b.r + 4) continue;
+                    const nx = dx / dist,
+                        ny = dy / dist;
+                    b.x = CX + nx * (rail.radius - b.r - 4);
+                    b.y = CY + ny * (rail.radius - b.r - 4);
+                    const vn = b.vx * nx + b.vy * ny;
+                    if (vn > 0) {
+                        b.vx -= (1 + 1.25) * vn * nx;
+                        b.vy -= (1 + 1.25) * vn * ny;
+                        b.vx += -ny * rail.side * 1.2;
+                        b.vy += nx * rail.side * 1.2;
+                        beep(260, 0.04, "square", 0.025);
+                    }
+                }
+            }
+
+            /* ---------- pocket events ---------- */
+            function popup(x, y, t, c) {
+                FX.push({ x, y, t, c, life: 60 });
+            }
+            function playSound(name) {
+                if (name === "tentacle_grab") {
+                    beep(120, 0.08, "sawtooth", 0.05);
+                    setTimeout(() => beep(68, 0.12, "sawtooth", 0.04), 50);
+                }
+            }
+            function spawnTentacleTulip(pk) {
+                if (Math.random() > 0.45) return;
+                const count = 1 + Math.floor(Math.random() * 3);
+                tentacleFX.push({
+                    x: pk.x,
+                    y: pk.y - 12,
+                    age: 0,
+                    life: 150,
+                    tentacles: Array.from({ length: count }, (_, i) => ({
+                        base:
+                            -Math.PI / 2 +
+                            (count === 1 ? 0 : (i / (count - 1) - 0.5) * 1.25) +
+                            (Math.random() - 0.5) * 0.28,
+                        joints: 3 + Math.floor(Math.random() * 3),
+                        seed: Math.random() * 1000,
+                        grabbed: false,
+                    })),
+                });
+                popup(pk.x, pk.y - 72, "触手!", "#ffd93b");
+            }
+            function rotateBallVelocity(b) {
+                const speed = Math.hypot(b.vx, b.vy) || 2;
+                const current = Math.atan2(b.vy, b.vx);
+                const sign = Math.random() < 0.5 ? -1 : 1;
+                const add = sign * (30 + Math.random() * 60) * D2R;
+                b.vx = Math.cos(current + add) * speed * 1.08;
+                b.vy = Math.sin(current + add) * speed * 1.08;
+                b.still = 0;
+            }
+            function tentaclePoints(effect, tentacle) {
+                const points = [{ x: effect.x, y: effect.y }];
+                const t = effect.age / 60;
+                const grow = Math.min(1, effect.age / 28);
+                const nearest = balls
+                    .filter((b) => !b.dead)
+                    .map((b) => ({
+                        ball: b,
+                        d: Math.hypot(b.x - effect.x, b.y - effect.y),
+                    }))
+                    .sort((a, b) => a.d - b.d)[0];
+                const track = nearest ? Math.max(0, 1 - nearest.d / 80) : 0;
+                let p = points[0],
+                    angle = tentacle.base;
+                for (let i = 0; i < tentacle.joints; i++) {
+                    const delayGrow = Math.max(0, Math.min(1, grow * tentacle.joints - i * 0.35));
+                    const wave =
+                        Math.sin(t * 5 + tentacle.seed + i * 1.4) * 0.34 +
+                        Math.sin(t * 9 + tentacle.seed * 0.31 + i * 2.2) * 0.12;
+                    if (nearest && track > 0) {
+                        const toBall = Math.atan2(nearest.ball.y - p.y, nearest.ball.x - p.x);
+                        angle += (toBall - angle) * track * (0.18 + i * 0.08);
+                    }
+                    angle += wave;
+                    const len = (34 - i * 4) * delayGrow;
+                    p = { x: p.x + Math.cos(angle) * len, y: p.y + Math.sin(angle) * len };
+                    points.push(p);
+                }
+                return points;
+            }
+            function updateTentacleFX() {
+                for (let i = tentacleFX.length - 1; i >= 0; i--) {
+                    const fx = tentacleFX[i];
+                    fx.age++;
+                    for (const tentacle of fx.tentacles) {
+                        if (tentacle.grabbed || fx.age < 12) continue;
+                        const points = tentaclePoints(fx, tentacle);
+                        const tip = points[points.length - 1];
+                        for (const b of balls) {
+                            if (b.dead) continue;
+                            if (Math.hypot(tip.x - b.x, tip.y - b.y) < b.r + 9) {
+                                tentacle.grabbed = true;
+                                rotateBallVelocity(b);
+                                playSound("tentacle_grab");
+                                popup(b.x, b.y - 24, "ぐにゃ!", "#ff6b35");
+                                break;
+                            }
+                        }
+                    }
+                    if (fx.age > fx.life) tentacleFX.splice(i, 1);
+                }
+            }
+            function onCatch(pk) {
+                if (pk.type === "start") {
+                    stock += 3;
+                    popup(pk.x, pk.y - 30, "+3", "#ffd93b");
+                    beep(880, 0.1, "square", 0.05);
+                    beep(1320, 0.12, "square", 0.04);
+                    if (slot.spin) {
+                        if (reserve < 4) {
+                            reserve++;
+                            say("保留 +1 (" + reserve + "/4)");
+                        }
+                    } else startSlot();
+                } else if (pk.type === "tulip") {
+                    pk.catchCount++;
+                    stock += 5;
+                    popup(pk.x, pk.y - 30, "+5", "#37c8f0");
+                    spawnTentacleTulip(pk);
+                    beep(740, 0.1, "triangle", 0.05);
+                } else if (pk.type === "attacker") {
+                    stock += 15;
+                    feverCatch++;
+                    popup(pk.x, pk.y - 34, "+15", "#ff4fa3");
+                    beep(520, 0.08, "square", 0.06);
+                    beep(1040, 0.1, "square", 0.05);
+                    if (feverCatch >= 10)
+                        endFever("10カウント達成!ラウンド終了!");
+                }
+                ui();
+            }
+
+            /* ---------- slot ---------- */
+            function startSlot() {
+                slot.spin = true;
+                slot.t = 0;
+                slot.result = null;
+                slot.winLines = [];
+                slot.lastMult = 0;
+                slot.vel = Array.from(
+                    { length: SLOT_CELLS },
+                    (_, i) => 0.42 + i * 0.025 + Math.random() * 0.12,
+                );
+                slot.stopT = Array.from(
+                    { length: SLOT_CELLS },
+                    (_, i) =>
+                        70 +
+                        i * 18 +
+                        (i === SLOT_CELLS - 1 && Math.random() < 0.25
+                            ? 70
+                            : 0),
+                );
+                const win = Math.random() < 1 / 4;
+                slot.result = win ? makeWinningGrid() : makeLosingGrid();
+                say("スロット回転中…!");
+                beep(440, 0.15, "sawtooth", 0.04);
+            }
+            function randomSymbol() {
+                return Math.floor(Math.random() * SYMS.length);
+            }
+            function randomGrid() {
+                return Array.from({ length: SLOT_CELLS }, randomSymbol);
+            }
+            function makeWinningGrid() {
+                const grid = randomGrid();
+                const line = SLOT_LINES[Math.floor(Math.random() * SLOT_LINES.length)];
+                const sym = randomSymbol();
+                for (const idx of line) grid[idx] = sym;
+                return grid;
+            }
+            function makeLosingGrid() {
+                for (let i = 0; i < 80; i++) {
+                    const grid = randomGrid();
+                    if (findWinLines(grid).length === 0) return grid;
+                }
+                const grid = randomGrid();
+                for (const line of SLOT_LINES) {
+                    if (
+                        grid[line[0]] === grid[line[1]] &&
+                        grid[line[1]] === grid[line[2]]
+                    ) {
+                        grid[line[2]] = (grid[line[2]] + 1) % SYMS.length;
+                    }
+                }
+                return grid;
+            }
+            function findWinLines(grid) {
+                return SLOT_LINES.filter(
+                    (line) =>
+                        grid[line[0]] === grid[line[1]] &&
+                        grid[line[1]] === grid[line[2]],
+                );
+            }
+            function bestMultiplier(lines, grid) {
+                return lines.reduce(
+                    (best, line) => Math.max(best, MULTS[grid[line[0]]]),
+                    0,
+                );
+            }
+            function updateSlot() {
+                if (!slot.spin) {
+                    slot.flash *= 0.96;
+                    if (slot.winPulse > 0) slot.winPulse--;
+                    return;
+                }
+                slot.t++;
+                for (let i = 0; i < SLOT_CELLS; i++) {
+                    if (slot.t < slot.stopT[i]) slot.reel[i] += slot.vel[i];
+                    else {
+                        // snap to target symbol
+                        const target = slot.result[i];
+                        const cur = slot.reel[i] % SYMS.length;
+                        let diff = (target - cur + SYMS.length) % SYMS.length;
+                        if (diff > 0.06) slot.reel[i] += Math.min(diff, 0.12);
+                        else {
+                            if (
+                                slot.reel[i] !== target &&
+                                i === SLOT_CELLS - 1 &&
+                                slot.t >= slot.stopT[SLOT_CELLS - 1]
+                            ) {
+                                beep(300, 0.08, "square", 0.04);
+                            }
+                            slot.reel[i] = target;
+                        }
+                    }
+                }
+                if (slot.t > slot.stopT[SLOT_CELLS - 1] + 40) {
+                    slot.spin = false;
+                    slot.winLines = findWinLines(slot.result);
+                    slot.lastMult = bestMultiplier(slot.winLines, slot.result);
+                    if (slot.winLines.length > 0) {
+                        bigWin();
+                    } else {
+                        say("ハズレ…次いくナリ!");
+                        if (reserve > 0) {
+                            reserve--;
+                            setTimeout(startSlot, 500);
+                        }
+                    }
+                }
+            }
+            function bigWin() {
+                wins++;
+                fever = 60 * 18;
+                feverCatch = 0;
+                slot.flash = 1;
+                slot.winPulse = 180;
+                stock += slot.lastMult;
+                for (const pk of pockets)
+                    if (pk.type === "attacker") pk.open = true;
+                const bestLine = slot.winLines.reduce((best, line) =>
+                    MULTS[slot.result[line[0]]] > MULTS[slot.result[best[0]]]
+                        ? line
+                        : best,
+                );
+                const bestSymbol = slot.result[bestLine[0]];
+                symbolHitCounts[bestSymbol]++;
+                say(
+                    "🎉大当り!!!「" +
+                        SYMS[bestSymbol] +
+                        "」揃い x" +
+                        slot.lastMult +
+                        "! +" +
+                        slot.lastMult +
+                        "玉!アタッカー全開!",
+                );
+                const seq = [523, 659, 784, 1046, 784, 1046, 1318];
+                seq.forEach((f, i) =>
+                    setTimeout(() => beep(f, 0.18, "square", 0.07), i * 130),
+                );
+                for (let i = 0; i < 80; i++)
+                    FX.push({
+                        x: CX + (Math.random() - 0.5) * 300,
+                        y: 250 + Math.random() * 200,
+                        t: ["✦", "★", "BANG!", "WIN"][i % 4],
+                        c: ["#ffd93b", "#ff4fa3", "#37c8f0", "#ffffff"][i % 4],
+                        life: 70 + Math.random() * 80,
+                    });
+                ui();
+            }
+            function endFever(t) {
+                fever = 0;
+                for (const pk of pockets)
+                    if (pk.type === "attacker") pk.open = false;
+                say(t + (reserve > 0 ? " 保留消化いくナリ!" : ""));
+                if (reserve > 0) {
+                    reserve--;
+                    setTimeout(startSlot, 600);
+                }
+            }
+
+            /* ---------- render ---------- */
+            function draw() {
+                ctx.clearRect(0, 0, W, H);
+                /* outer frame */
+                ctx.fillStyle = "#27272c";
+                ctx.fillRect(0, 0, W, H);
+                /* board disc */
+                let g = ctx.createRadialGradient(CX, CY - 120, 80, CX, CY, R);
+                g.addColorStop(0, "#101014");
+                g.addColorStop(1, "#050507");
+                ctx.beginPath();
+                ctx.arc(CX, CY, R, 0, 7);
+                ctx.fillStyle = g;
+                ctx.fill();
+                ctx.lineWidth = 10;
+                ctx.strokeStyle = "#1d1d24";
+                ctx.stroke();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = "rgba(177,76,232,.35)";
+                ctx.stroke();
+
+                /* side metal rails (decorative, like the photo) */
+                sideRail(-1);
+                sideRail(1);
+
+                /* slot panel */
+                drawSlotPanel();
+
+                /* pins */
+                for (const p of pins) {
+                    if (p.hot > 0.05) {
+                        ctx.beginPath();
+                        ctx.arc(p.x, p.y, p.r + 7, 0, 7);
+                        ctx.fillStyle = `rgba(255,230,80,${p.hot * 0.5})`;
+                        ctx.fill();
+                    }
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.r, 0, 7);
+                    ctx.fillStyle = "#e8c520";
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(p.x - 1.4, p.y - 1.4, p.r * 0.42, 0, 7);
+                    ctx.fillStyle = "#fff6c0";
+                    ctx.fill();
+                }
+
+                /* windmills */
+                for (const wm of windmills) {
+                    ctx.save();
+                    ctx.translate(wm.x, wm.y);
+                    ctx.beginPath();
+                    ctx.arc(0, 0, wm.r, 0, 7);
+                    ctx.fillStyle = "rgba(216,210,30,.92)";
+                    ctx.fill();
+                    ctx.strokeStyle = "#8a8410";
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                    ctx.rotate(wm.ang);
+                    ctx.strokeStyle = "#6b6608";
+                    ctx.lineWidth = 4;
+                    ctx.lineCap = "round";
+                    for (let i = 0; i < 3; i++) {
+                        ctx.rotate((Math.PI * 2) / 3);
+                        ctx.beginPath();
+                        ctx.moveTo(0, 0);
+                        ctx.lineTo(wm.r - 6, 0);
+                        ctx.stroke();
+                    }
+                    ctx.restore();
+                    ctx.beginPath();
+                    ctx.arc(wm.x, wm.y, 4, 0, 7);
+                    ctx.fillStyle = "#3a3a3a";
+                    ctx.fill();
+                }
+
+                /* pockets */
+                for (const pk of pockets) drawPocket(pk);
+
+                /* tentacles */
+                for (const fx of tentacleFX) drawTentacleFX(fx);
+
+                /* balls */
+                for (const b of balls) {
+                    // trail
+                    for (let i = 0; i < b.trail.length; i += 2) {
+                        const a = i / b.trail.length;
+                        ctx.beginPath();
+                        ctx.arc(
+                            b.trail[i],
+                            b.trail[i + 1],
+                            b.r * a * 0.7,
+                            0,
+                            7,
+                        );
+                        ctx.fillStyle = `rgba(190,200,220,${a * 0.18})`;
+                        ctx.fill();
+                    }
+                    const bg = ctx.createRadialGradient(
+                        b.x - 3,
+                        b.y - 3,
+                        1,
+                        b.x,
+                        b.y,
+                        b.r,
+                    );
+                    bg.addColorStop(0, "#ffffff");
+                    bg.addColorStop(0.5, "#c9ced8");
+                    bg.addColorStop(1, "#5d6470");
+                    ctx.beginPath();
+                    ctx.arc(b.x, b.y, b.r, 0, 7);
+                    ctx.fillStyle = bg;
+                    ctx.fill();
+                }
+
+                /* FX popups */
+                for (let i = FX.length - 1; i >= 0; i--) {
+                    const f = FX[i];
+                    f.life--;
+                    f.y -= 0.7;
+                    ctx.globalAlpha = Math.min(1, f.life / 30);
+                    ctx.font = "bold 26px monospace";
+                    ctx.fillStyle = f.c;
+                    ctx.textAlign = "center";
+                    ctx.fillText(f.t, f.x, f.y);
+                    ctx.globalAlpha = 1;
+                    if (f.life <= 0) FX.splice(i, 1);
+                }
+
+                if (debugGeometry) drawDebugGeometry();
+
+                /* fever overlay */
+                if (fever > 0) {
+                    const a = 0.06 + 0.05 * Math.sin(performance.now() / 90);
+                    ctx.beginPath();
+                    ctx.arc(CX, CY, R, 0, 7);
+                    ctx.fillStyle = `rgba(255,60,60,${a})`;
+                    ctx.fill();
+                    ctx.font = "bold 30px monospace";
+                    ctx.textAlign = "center";
+                    ctx.fillStyle = "#ff5050";
+                    ctx.fillText(
+                        "FEVER  残り " +
+                            Math.ceil(fever / 60) +
+                            "s  (" +
+                            feverCatch +
+                            "/10)",
+                        CX,
+                        CY + R * 0.78,
+                    );
+                }
+                /* reserve lamps */
+                for (let i = 0; i < 4; i++) {
+                    ctx.beginPath();
+                    ctx.arc(CX - 36 + i * 24, 560, 7, 0, 7);
+                    ctx.fillStyle = i < reserve ? "#37c8f0" : "#1c2a30";
+                    ctx.fill();
+                    ctx.strokeStyle = "#0a1418";
+                    ctx.stroke();
+                }
+            }
+            function sideRail(side) {
+                ctx.save();
+                ctx.translate(CX, CY);
+                ctx.scale(side, 1);
+                ctx.beginPath();
+                ctx.arc(0, 0, R - 26, 160 * D2R, 200 * D2R);
+                ctx.arc(0, 0, R - 72, 200 * D2R, 160 * D2R, true);
+                ctx.closePath();
+                const g = ctx.createLinearGradient(-R, 0, -R + 80, 0);
+                g.addColorStop(0, "#e5e8ee");
+                g.addColorStop(1, "#9aa0ac");
+                ctx.fillStyle = g;
+                ctx.fill();
+                ctx.strokeStyle = "#5a5f6a";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                // colored gems
+                const cols = [
+                    "#ff4fa3",
+                    "#b14ce8",
+                    "#37c8f0",
+                    "#b14ce8",
+                    "#ff4fa3",
+                ];
+                for (let i = 0; i < 5; i++) {
+                    const a = (166 + i * 7) * D2R;
+                    ctx.beginPath();
+                    ctx.moveTo(Math.cos(a) * (R - 60), Math.sin(a) * (R - 60));
+                    ctx.lineTo(
+                        Math.cos(a + 3 * D2R) * (R - 44),
+                        Math.sin(a + 3 * D2R) * (R - 44),
+                    );
+                    ctx.lineTo(
+                        Math.cos(a + 6 * D2R) * (R - 60),
+                        Math.sin(a + 6 * D2R) * (R - 60),
+                    );
+                    ctx.closePath();
+                    ctx.fillStyle = cols[i];
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+            function drawDebugGeometry() {
+                ctx.save();
+                ctx.lineWidth = 2;
+                ctx.setLineDash([8, 6]);
+                ctx.strokeStyle = "rgba(255,79,163,.9)";
+                ctx.strokeRect(
+                    SLOT_HIT_RECT.x,
+                    SLOT_HIT_RECT.y,
+                    SLOT_HIT_RECT.w,
+                    SLOT_HIT_RECT.h,
+                );
+                ctx.strokeStyle = "rgba(55,200,240,.85)";
+                ctx.strokeRect(
+                    NO_PIN_ZONE.x,
+                    NO_PIN_ZONE.y,
+                    NO_PIN_ZONE.w,
+                    NO_PIN_ZONE.h,
+                );
+                ctx.setLineDash([]);
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = "rgba(255,217,59,.45)";
+                for (const p of pins) {
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.r + BALL_R, 0, 7);
+                    ctx.stroke();
+                }
+                ctx.strokeStyle = "rgba(177,76,232,.65)";
+                for (const wm of windmills) {
+                    ctx.beginPath();
+                    ctx.arc(wm.x, wm.y, wm.r + BALL_R - 6, 0, 7);
+                    ctx.stroke();
+                }
+                ctx.strokeStyle = "rgba(255,255,255,.8)";
+                for (const b of balls) {
+                    ctx.beginPath();
+                    ctx.arc(b.x, b.y, b.r, 0, 7);
+                    ctx.stroke();
+                }
+                ctx.fillStyle = "rgba(55,200,240,.95)";
+                ctx.font = "bold 13px monospace";
+                ctx.textAlign = "left";
+                ctx.fillText("slotSafeZone", SLOT_SAFE_ZONE.x + 8, SLOT_SAFE_ZONE.y + 18);
+                ctx.fillStyle = "rgba(255,79,163,.95)";
+                ctx.fillText("slotHitRect", SLOT_HIT_RECT.x + 8, SLOT_HIT_RECT.y + 18);
+                ctx.restore();
+            }
+            function drawPocket(pk) {
+                ctx.save();
+                ctx.translate(pk.x, pk.y);
+                if (pk.glow > 0.05) {
+                    ctx.beginPath();
+                    ctx.arc(0, 4, pk.w + 16, 0, 7);
+                    ctx.fillStyle = `rgba(255,79,163,${pk.glow * 0.4})`;
+                    ctx.fill();
+                }
+                if (pk.type === "attacker") {
+                    // big bottom attacker
+                    ctx.fillStyle = pk.open ? "#3a0a0a" : "#222226";
+                    rr(-pk.w - 8, -8, pk.w * 2 + 16, 40, 10);
+                    ctx.fill();
+                    ctx.strokeStyle = pk.open ? "#ff3b3b" : "#3a3a42";
+                    ctx.lineWidth = 3;
+                    rr(-pk.w - 8, -8, pk.w * 2 + 16, 40, 10);
+                    ctx.stroke();
+                    ctx.fillStyle = pk.open ? "#ffd93b" : "#55555f";
+                    ctx.font = "bold 15px monospace";
+                    ctx.textAlign = "center";
+                    ctx.fillText(pk.open ? "OPEN!!" : "ATTACK", 0, 17);
+                    if (pk.open) {
+                        // flapping wings
+                        const fl =
+                            Math.sin(performance.now() / 120) * 0.5 + 0.6;
+                        ctx.strokeStyle = "#ff8a00";
+                        ctx.lineWidth = 5;
+                        ctx.lineCap = "round";
+                        ctx.beginPath();
+                        ctx.moveTo(-pk.w - 8, -6);
+                        ctx.lineTo(-pk.w - 26, -6 - 18 * fl);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(pk.w + 8, -6);
+                        ctx.lineTo(pk.w + 26, -6 - 18 * fl);
+                        ctx.stroke();
+                    }
+                } else {
+                    // tulip / start chucker — UFO display style
+                    ctx.fillStyle = "#2a2a30";
+                    rr(-pk.w - 6, -6, pk.w * 2 + 12, 34, 8);
+                    ctx.fill();
+                    ctx.strokeStyle =
+                        pk.type === "start" ? "#ff4fa3" : "#b14ce8";
+                    ctx.lineWidth = 2.5;
+                    rr(-pk.w - 6, -6, pk.w * 2 + 12, 34, 8);
+                    ctx.stroke();
+                    // tulip wings
+                    ctx.strokeStyle = "#cfd2d8";
+                    ctx.lineWidth = 4;
+                    ctx.lineCap = "round";
+                    ctx.beginPath();
+                    ctx.moveTo(-pk.w * 0.62, -4);
+                    ctx.lineTo(-pk.w * 0.62 - 9, -20);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(pk.w * 0.62, -4);
+                    ctx.lineTo(pk.w * 0.62 + 9, -20);
+                    ctx.stroke();
+                    ctx.font =
+                        (pk.type === "start" ? "bold 13px" : "18px") +
+                        " monospace";
+                    ctx.textAlign = "center";
+                    ctx.fillStyle = pk.type === "start" ? "#ffd93b" : "#fff";
+                    ctx.fillText(pk.label, 0, 16);
+                    if (pk.type === "tulip") {
+                        ctx.font = "bold 12px monospace";
+                        ctx.fillStyle = "#37c8f0";
+                        ctx.fillText("IN " + pk.catchCount, 0, 30);
+                    }
+                }
+                ctx.restore();
+            }
+            function drawTentacleFX(fx) {
+                const fadeIn = Math.min(1, fx.age / 18);
+                const fadeOut = Math.min(1, (fx.life - fx.age) / 30);
+                const alpha = Math.max(0, Math.min(fadeIn, fadeOut));
+                if (alpha <= 0) return;
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.lineCap = "round";
+                ctx.lineJoin = "round";
+                for (const tentacle of fx.tentacles) {
+                    const points = tentaclePoints(fx, tentacle);
+                    for (let i = 0; i < points.length - 1; i++) {
+                        const a = points[i],
+                            b = points[i + 1],
+                            t = i / Math.max(1, points.length - 2);
+                        const g = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+                        g.addColorStop(0, "#8B4513");
+                        g.addColorStop(1, "#FF6B35");
+                        ctx.strokeStyle = g;
+                        ctx.lineWidth = 12 - t * 9;
+                        ctx.beginPath();
+                        ctx.moveTo(a.x, a.y);
+                        ctx.lineTo(b.x, b.y);
+                        ctx.stroke();
+                    }
+                    const tip = points[points.length - 1];
+                    ctx.beginPath();
+                    ctx.arc(tip.x, tip.y, 4, 0, 7);
+                    ctx.fillStyle = "#FF4500";
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(tip.x - 1, tip.y - 1, 1.7, 0, 7);
+                    ctx.fillStyle = "#ffd1c4";
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+            function rr(x, y, w, h, r) {
+                ctx.beginPath();
+                ctx.moveTo(x + r, y);
+                ctx.arcTo(x + w, y, x + w, y + h, r);
+                ctx.arcTo(x + w, y + h, x, y + h, r);
+                ctx.arcTo(x, y + h, x, y, r);
+                ctx.arcTo(x, y, x + w, y, r);
+                ctx.closePath();
+            }
+            function drawSlotPanel() {
+                const x = SLOT_RECT.x,
+                    y = SLOT_RECT.y,
+                    w = SLOT_RECT.w,
+                    h = SLOT_RECT.h;
+                ctx.fillStyle = "#000";
+                rr(x + 18, y + 54, w - 36, h - 102, 14);
+                ctx.fill();
+                // 3x3 reels
+                ctx.save();
+                rr(x + 22, y + 58, w - 44, h - 110, 12);
+                ctx.clip();
+                const gridX = x + 32,
+                    gridY = y + 68,
+                    gap = 8,
+                    gridW = w - 64,
+                    gridH = h - 130,
+                    cellW = (gridW - gap * 2) / 3,
+                    cellH = (gridH - gap * 2) / 3,
+                    winningCells = new Set(slot.winLines.flat());
+                for (let i = 0; i < SLOT_CELLS; i++) {
+                    const col = i % 3,
+                        row = Math.floor(i / 3),
+                        rx = gridX + col * (cellW + gap),
+                        ry = gridY + row * (cellH + gap);
+                    ctx.fillStyle = "#0d0d12";
+                    ctx.fillRect(rx, ry, cellW, cellH);
+                    const pos = slot.reel[i];
+                    for (let k = -1; k <= 1; k++) {
+                        const idx =
+                            (((Math.floor(pos) + k) % SYMS.length) +
+                                SYMS.length) %
+                            SYMS.length;
+                        const frac = pos - Math.floor(pos);
+                        const cy = ry + cellH / 2;
+                        const sy = cy + (k - frac) * (cellH + 4);
+                        const isStoppedWin =
+                            !slot.spin && winningCells.has(i) && k === 0 && slot.winPulse > 0;
+                        const pulse =
+                            isStoppedWin
+                                ? 1 + 0.3 * (0.5 + 0.5 * Math.sin((180 - slot.winPulse) * 0.24))
+                                : 1;
+                        ctx.font = Math.round(48 * pulse) + "px serif";
+                        ctx.textAlign = "center";
+                        ctx.textBaseline = "middle";
+                        ctx.globalAlpha = Math.max(
+                            0,
+                            1 - Math.abs(sy - cy) / (cellH * 0.9),
+                        );
+                        if (isStoppedWin) {
+                            ctx.save();
+                            ctx.shadowColor = "#ffd93b";
+                            ctx.shadowBlur = 16 + (pulse - 1) * 48;
+                            ctx.fillText(SYMS[idx], rx + cellW / 2, sy);
+                            ctx.restore();
+                        } else {
+                            ctx.fillText(SYMS[idx], rx + cellW / 2, sy);
+                        }
+                        ctx.globalAlpha = 1;
+                    }
+                    ctx.strokeStyle = "#2c2c36";
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(rx, ry, cellW, cellH);
+                }
+                ctx.restore();
+                ctx.textBaseline = "alphabetic";
+                ctx.textAlign = "center";
+                ctx.font = "bold 17px monospace";
+                ctx.fillStyle = "#ffd93b";
+                ctx.fillText(
+                    slot.lastMult > 0 ? "WIN x" + slot.lastMult : "MAX 🦑 x100",
+                    x + w / 2,
+                    y + h - 20,
+                );
+            }
+
+            /* ---------- input ---------- */
+            const track = $("powerTrack"),
+                fill = $("powerFill"),
+                knob = $("powerKnob");
+            function setPower(v) {
+                power = Math.max(0.05, Math.min(1, v));
+                fill.style.height = power * 100 + "%";
+                knob.style.bottom = "calc(" + power * 100 + "% - 7px)";
+            }
+            setPower(0.8);
+            let dragging = false;
+            function trackEv(e) {
+                const r = track.getBoundingClientRect();
+                const y = e.touches ? e.touches[0].clientY : e.clientY;
+                setPower(1 - (y - r.top) / r.height);
+            }
+            track.addEventListener("pointerdown", (e) => {
+                dragging = true;
+                trackEv(e);
+            });
+            addEventListener("pointermove", (e) => {
+                if (dragging) trackEv(e);
+            });
+            addEventListener("pointerup", () => (dragging = false));
+            $("fireBtn").addEventListener("click", launch);
+            $("autoBtn").addEventListener("click", () => {
+                autoFire = !autoFire;
+                $("autoBtn").classList.toggle("on", autoFire);
+                $("autoBtn").textContent =
+                    "AUTO 連射 " + (autoFire ? "ON" : "OFF");
+            });
+            addEventListener("keydown", (e) => {
+                if (e.code === "Space") {
+                    e.preventDefault();
+                    launch();
+                }
+                if (e.code === "ArrowUp") setPower(power + 0.03);
+                if (e.code === "ArrowDown") setPower(power - 0.03);
+                if (e.code === "KeyD") {
+                    debugGeometry = !debugGeometry;
+                    say(
+                        "デバッグ表示 " +
+                            (debugGeometry ? "ON" : "OFF") +
+                            " / slotRect・noPinZone確認",
+                    );
+                }
+            });
+
+            /* ---------- main loop ---------- */
+            function loop() {
+                step();
+                updateSlot();
+                if (fever > 0) {
+                    fever--;
+                    if (fever === 0) endFever("FEVER終了!");
+                }
+                if (autoFire) {
+                    autoTimer++;
+                    if (autoTimer >= 36) {
+                        autoTimer = 0;
+                        launch();
+                    }
+                } // 100発/分
+                draw();
+                requestAnimationFrame(loop);
+            }
+            ui();
+            loop();
+        </script>
+    </body>
+</html>

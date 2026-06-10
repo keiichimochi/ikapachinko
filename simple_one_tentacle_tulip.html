@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>1本触手チューリップ - Simple Sample</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #202126;
+      color: #f3f3f3;
+    }
+    .wrap {
+      width: min(760px, 96vw);
+    }
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin: 0 0 10px;
+    }
+    button {
+      border: 1px solid #ff4ec7;
+      border-radius: 10px;
+      background: #17181d;
+      color: #fff;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    button:hover { background: #2b2030; }
+    .hint {
+      opacity: .78;
+      font-size: 13px;
+    }
+    canvas {
+      width: 100%;
+      height: auto;
+      display: block;
+      border: 1px solid #3d3048;
+      border-radius: 18px;
+      background: radial-gradient(circle at 50% 35%, #111116 0%, #07070a 68%, #030305 100%);
+      box-shadow: 0 18px 60px rgba(0,0,0,.35);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="toolbar">
+      <button id="toggleBtn">OPEN</button>
+      <button id="resetBtn">玉をリセット</button>
+      <span class="hint">玉をドラッグできます。触手80px以内で追跡、接触で playSound('tentacle_grab')</span>
+    </div>
+    <canvas id="game" width="720" height="540"></canvas>
+  </div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+
+  // ===== 調整しやすい定数 =====
+  const TRACK_RADIUS = 80;
+  const TENTACLE_SEGMENTS = 5;
+  const TENTACLE_LENGTHS = [34, 30, 25, 20, 16];
+  const TENTACLE_ROOT_WIDTH = 12;
+  const TENTACLE_TIP_WIDTH = 3;
+  const TENTACLE_COLOR = '#ffffff';
+  const SUCTION_COLOR = '#ff69b4';
+  const SUCTION_INNER_COLOR = '#ffd1ea';
+
+  const tulip = {
+    x: W / 2,
+    y: 420,
+    open: false,
+    openProgress: 0
+  };
+
+  const tentacle = {
+    phase: Math.random() * Math.PI * 2,
+    grabTimer: 0,
+    cooldown: 0,
+    lastTip: { x: 0, y: 0 }
+  };
+
+  const ball = {
+    x: W / 2 + 120,
+    y: 245,
+    r: 11,
+    vx: -0.8,
+    vy: 0.65,
+    dragging: false
+  };
+
+  function playSound(name) {
+    // 本番では既存のSE管理に接続してください。
+    console.log(`playSound('${name}')`);
+  }
+
+  const clamp01 = v => Math.max(0, Math.min(1, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  function easeOutCubic(t) {
+    t = clamp01(t);
+    return 1 - Math.pow(1 - t, 3);
+  }
+
+  function rotateBallVelocityRandomly() {
+    const speed = Math.hypot(ball.vx, ball.vy) || 1.2;
+    const currentAngle = Math.atan2(ball.vy, ball.vx);
+    const sign = Math.random() < 0.5 ? -1 : 1;
+    const addAngle = sign * (Math.PI / 180) * (30 + Math.random() * 60);
+    ball.vx = Math.cos(currentAngle + addAngle) * speed;
+    ball.vy = Math.sin(currentAngle + addAngle) * speed;
+  }
+
+  function updateBall() {
+    if (ball.dragging) return;
+
+    ball.x += ball.vx;
+    ball.y += ball.vy;
+
+    // 軽い重力。パチンコ玉の雰囲気用。
+    ball.vy += 0.012;
+
+    if (ball.x < ball.r || ball.x > W - ball.r) {
+      ball.vx *= -1;
+      ball.x = Math.max(ball.r, Math.min(W - ball.r, ball.x));
+    }
+    if (ball.y < ball.r || ball.y > H - ball.r) {
+      ball.vy *= -1;
+      ball.y = Math.max(ball.r, Math.min(H - ball.r, ball.y));
+    }
+  }
+
+  function getTentaclePoints(timeSec) {
+    const points = [];
+    const root = { x: tulip.x, y: tulip.y - 17 };
+    points.push(root);
+
+    const ballDistance = Math.hypot(ball.x - root.x, ball.y - root.y);
+    const trackAmount = tulip.open ? clamp01(1 - ballDistance / TRACK_RADIUS) : 0;
+
+    let current = { ...root };
+    let angle = -Math.PI / 2;
+
+    for (let i = 0; i < TENTACLE_SEGMENTS; i++) {
+      // 根元から順番に伸びる。1関節ごとに0.1秒相当の遅延。
+      const delay = i * 0.10;
+      const segmentProgress = easeOutCubic((tulip.openProgress - delay) / 0.55);
+      const length = TENTACLE_LENGTHS[i] * segmentProgress;
+
+      // サイン波 + 疑似ノイズ。セグメントごとに独立感を出す。
+      const wave =
+        Math.sin(timeSec * 4.0 + tentacle.phase + i * 1.35) * 0.34 +
+        Math.sin(timeSec * 7.7 + tentacle.phase * 1.9 + i * 2.1) * 0.10;
+
+      // 玉が近い時は、各関節が玉方向へ寄っていく。
+      const toBall = Math.atan2(ball.y - current.y, ball.x - current.x);
+      const trackingWeight = trackAmount * (0.25 + i / TENTACLE_SEGMENTS * 0.75);
+      angle = lerp(angle + wave * 0.35, toBall + wave, trackingWeight);
+
+      // 掴み中は少し巻きつきっぽく角度を強める。
+      if (tentacle.grabTimer > 0) {
+        angle += Math.sin((0.3 - tentacle.grabTimer) * 34 + i * 1.2) * 0.5;
+      }
+
+      current = {
+        x: current.x + Math.cos(angle) * length,
+        y: current.y + Math.sin(angle) * length
+      };
+      points.push(current);
+    }
+
+    return points;
+  }
+
+  function updateTentacle(dt, timeSec) {
+    const target = tulip.open ? 1 : 0;
+    const speed = tulip.open ? 2.4 : 3.1;
+    tulip.openProgress += (target - tulip.openProgress) * Math.min(1, dt * speed);
+
+    tentacle.cooldown = Math.max(0, tentacle.cooldown - dt);
+    tentacle.grabTimer = Math.max(0, tentacle.grabTimer - dt);
+
+    if (!tulip.open || tulip.openProgress < 0.55 || tentacle.cooldown > 0) return;
+
+    const points = getTentaclePoints(timeSec);
+    const tip = points[points.length - 1];
+    tentacle.lastTip = tip;
+
+    if (Math.hypot(tip.x - ball.x, tip.y - ball.y) < ball.r + 8) {
+      tentacle.grabTimer = 0.3;
+      tentacle.cooldown = 0.75;
+      rotateBallVelocityRandomly();
+      playSound('tentacle_grab');
+    }
+  }
+
+  function drawTulip() {
+    ctx.save();
+    ctx.translate(tulip.x, tulip.y);
+
+    // 本体
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#c14cff';
+    ctx.fillStyle = '#18151f';
+    roundRect(ctx, -45, -14, 90, 34, 9);
+    ctx.fill();
+    ctx.stroke();
+
+    // 開閉する左右の花弁
+    const open = easeOutCubic(tulip.openProgress);
+    ctx.strokeStyle = '#f1d8ff';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+
+    ctx.beginPath();
+    ctx.moveTo(-23, -13);
+    ctx.lineTo(-39 - open * 10, -44 - open * 8);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(23, -13);
+    ctx.lineTo(39 + open * 10, -44 - open * 8);
+    ctx.stroke();
+
+    ctx.fillStyle = '#5ef2ff';
+    ctx.font = '700 12px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('IN', 0, 8);
+    ctx.restore();
+  }
+
+  function drawTentacle(timeSec) {
+    if (tulip.openProgress < 0.02) return;
+
+    const points = getTentaclePoints(timeSec);
+
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    for (let i = 0; i < points.length - 1; i++) {
+      const a = points[i];
+      const b = points[i + 1];
+      const t = i / (points.length - 2);
+      const width = lerp(TENTACLE_ROOT_WIDTH, TENTACLE_TIP_WIDTH, t);
+
+      // 白い触手本体
+      ctx.strokeStyle = TENTACLE_COLOR;
+      ctx.globalAlpha = 0.96;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+
+      // 立体感用の薄い影。不要なら削除OK。
+      ctx.strokeStyle = 'rgba(210, 220, 255, 0.35)';
+      ctx.lineWidth = Math.max(1, width * 0.35);
+      ctx.beginPath();
+      ctx.moveTo(a.x - 1.5, a.y - 1.5);
+      ctx.lineTo(b.x - 1.5, b.y - 1.5);
+      ctx.stroke();
+    }
+
+    // 先端の吸盤：ピンク + 内側の小さい円
+    const tip = points[points.length - 1];
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = SUCTION_COLOR;
+    ctx.beginPath();
+    ctx.arc(tip.x, tip.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = SUCTION_INNER_COLOR;
+    ctx.beginPath();
+    ctx.arc(tip.x, tip.y, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawBall() {
+    ctx.save();
+    ctx.fillStyle = '#ffd829';
+    ctx.strokeStyle = '#fff5a7';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawTrackRadius() {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 105, 180, 0.24)';
+    ctx.setLineDash([6, 8]);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(tulip.x, tulip.y - 17, TRACK_RADIUS, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawBackground() {
+    ctx.clearRect(0, 0, W, H);
+
+    // 追跡半径の目安
+    drawTrackRadius();
+
+    // 簡易釘
+    ctx.save();
+    ctx.fillStyle = '#ffd829';
+    const pins = [
+      [280, 310], [320, 300], [360, 300], [400, 310],
+      [250, 360], [295, 365], [425, 365], [470, 360]
+    ];
+    for (const [x, y] of pins) {
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  let lastTime = performance.now();
+  function loop(now) {
+    const dt = Math.min(0.033, (now - lastTime) / 1000);
+    const timeSec = now / 1000;
+    lastTime = now;
+
+    updateBall();
+    updateTentacle(dt, timeSec);
+
+    drawBackground();
+    drawTentacle(timeSec);
+    drawTulip();
+    drawBall();
+
+    requestAnimationFrame(loop);
+  }
+
+  document.getElementById('toggleBtn').addEventListener('click', () => {
+    tulip.open = !tulip.open;
+    document.getElementById('toggleBtn').textContent = tulip.open ? 'CLOSE' : 'OPEN';
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', () => {
+    ball.x = W / 2 + 120;
+    ball.y = 245;
+    ball.vx = -0.8;
+    ball.vy = 0.65;
+  });
+
+  canvas.addEventListener('pointerdown', e => {
+    const p = toCanvasPoint(e);
+    if (Math.hypot(p.x - ball.x, p.y - ball.y) <= ball.r + 10) {
+      ball.dragging = true;
+      canvas.setPointerCapture(e.pointerId);
+    }
+  });
+
+  canvas.addEventListener('pointermove', e => {
+    if (!ball.dragging) return;
+    const p = toCanvasPoint(e);
+    ball.x = p.x;
+    ball.y = p.y;
+    ball.vx = 0;
+    ball.vy = 0;
+  });
+
+  canvas.addEventListener('pointerup', e => {
+    if (!ball.dragging) return;
+    ball.dragging = false;
+    ball.vx = (Math.random() - 0.5) * 1.8;
+    ball.vy = -0.7;
+    canvas.releasePointerCapture(e.pointerId);
+  });
+
+  function toCanvasPoint(e) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - rect.left) * canvas.width / rect.width,
+      y: (e.clientY - rect.top) * canvas.height / rect.height
+    };
+  }
+
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
