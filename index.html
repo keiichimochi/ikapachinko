@@ -198,28 +198,49 @@
                 }
             }
             @media (max-width: 680px) {
+                html,
+                body {
+                    height: auto;
+                    min-height: 100%;
+                    overflow: auto;
+                    touch-action: manipulation;
+                }
                 #wrap {
                     flex-direction: column;
+                    align-items: stretch;
+                    justify-content: flex-start;
                     gap: 8px;
+                    height: auto;
+                    min-height: 100dvh;
+                    padding: 8px;
                 }
                 #boardBox {
                     max-width: 100%;
                     width: 100%;
-                    height: auto;
-                    flex: 1;
+                    height: clamp(480px, 74svh, 760px);
+                    flex: 0 0 auto;
                     min-height: 0;
+                    aspect-ratio: auto;
                 }
                 #panel {
                     width: 100%;
                     flex-direction: row;
                     flex-wrap: wrap;
+                    gap: 8px;
                 }
                 .card {
                     flex: 1;
                     min-width: 100px;
+                    padding: 8px;
                 }
                 #powerWrap {
-                    height: 90px;
+                    height: 72px;
+                }
+                #fireBtn {
+                    padding: 12px 0;
+                }
+                #msg {
+                    flex-basis: 100%;
                 }
             }
         </style>
@@ -917,7 +938,7 @@
                             (Math.random() - 0.5) * 0.28,
                         joints: 3 + Math.floor(Math.random() * 3),
                         seed: Math.random() * 1000,
-                        grabbed: false,
+                        hitCooldown: 0,
                     })),
                 });
                 popup(pk.x, pk.y - 72, "触手!", "#ffd93b");
@@ -961,21 +982,67 @@
                 }
                 return points;
             }
+            function closestPointOnSegment(px, py, ax, ay, bx, by) {
+                const vx = bx - ax,
+                    vy = by - ay;
+                const len2 = vx * vx + vy * vy || 1;
+                const t = Math.max(0, Math.min(1, ((px - ax) * vx + (py - ay) * vy) / len2));
+                return { x: ax + vx * t, y: ay + vy * t, t };
+            }
+            function collideTentacleBall(b, points) {
+                for (let i = 0; i < points.length - 1; i++) {
+                    const a = points[i],
+                        c = points[i + 1],
+                        progress = i / Math.max(1, points.length - 2),
+                        tubeR = 6.5 - progress * 4.2;
+                    const p = closestPointOnSegment(b.x, b.y, a.x, a.y, c.x, c.y);
+                    let dx = b.x - p.x,
+                        dy = b.y - p.y,
+                        d = Math.hypot(dx, dy);
+                    const hitR = b.r + tubeR;
+                    if (d >= hitR) continue;
+                    if (d < 0.001) {
+                        const sx = c.x - a.x,
+                            sy = c.y - a.y;
+                        d = Math.hypot(sx, sy) || 1;
+                        dx = -sy / d;
+                        dy = sx / d;
+                        d = 1;
+                    }
+                    const nx = dx / d,
+                        ny = dy / d;
+                    b.x = p.x + nx * hitR;
+                    b.y = p.y + ny * hitR;
+                    const vn = b.vx * nx + b.vy * ny;
+                    if (vn < 0) {
+                        b.vx -= (1 + 1.05) * vn * nx;
+                        b.vy -= (1 + 1.05) * vn * ny;
+                    }
+                    const tangentKick = (Math.random() - 0.5) * 2.8;
+                    b.vx += nx * 1.8 - ny * tangentKick;
+                    b.vy += ny * 1.8 + nx * tangentKick;
+                    b.still = 0;
+                    return true;
+                }
+                return false;
+            }
             function updateTentacleFX() {
                 for (let i = tentacleFX.length - 1; i >= 0; i--) {
                     const fx = tentacleFX[i];
                     fx.age++;
                     for (const tentacle of fx.tentacles) {
-                        if (tentacle.grabbed || fx.age < 12) continue;
+                        tentacle.hitCooldown = Math.max(0, tentacle.hitCooldown - 1);
+                        if (fx.age < 12) continue;
                         const points = tentaclePoints(fx, tentacle);
-                        const tip = points[points.length - 1];
                         for (const b of balls) {
                             if (b.dead) continue;
-                            if (Math.hypot(tip.x - b.x, tip.y - b.y) < b.r + 9) {
-                                tentacle.grabbed = true;
-                                rotateBallVelocity(b);
-                                playSound("tentacle_grab");
-                                popup(b.x, b.y - 24, "ぐにゃ!", "#ff6b35");
+                            if (collideTentacleBall(b, points)) {
+                                if (tentacle.hitCooldown <= 0) {
+                                    tentacle.hitCooldown = 18;
+                                    rotateBallVelocity(b);
+                                    playSound("tentacle_grab");
+                                    popup(b.x, b.y - 24, "バチン!", "#ffffff");
+                                }
                                 break;
                             }
                         }
@@ -1505,13 +1572,15 @@
                 ctx.lineJoin = "round";
                 for (const tentacle of fx.tentacles) {
                     const points = tentaclePoints(fx, tentacle);
+                    ctx.shadowColor = "rgba(255,255,255,0.55)";
+                    ctx.shadowBlur = 10;
                     for (let i = 0; i < points.length - 1; i++) {
                         const a = points[i],
                             b = points[i + 1],
                             t = i / Math.max(1, points.length - 2);
                         const g = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
-                        g.addColorStop(0, "#8B4513");
-                        g.addColorStop(1, "#FF6B35");
+                        g.addColorStop(0, "#ffffff");
+                        g.addColorStop(1, "#d9f6ff");
                         ctx.strokeStyle = g;
                         ctx.lineWidth = 12 - t * 9;
                         ctx.beginPath();
@@ -1522,11 +1591,11 @@
                     const tip = points[points.length - 1];
                     ctx.beginPath();
                     ctx.arc(tip.x, tip.y, 4, 0, 7);
-                    ctx.fillStyle = "#FF4500";
+                    ctx.fillStyle = "#ffffff";
                     ctx.fill();
                     ctx.beginPath();
                     ctx.arc(tip.x - 1, tip.y - 1, 1.7, 0, 7);
-                    ctx.fillStyle = "#ffd1c4";
+                    ctx.fillStyle = "#9ee7ff";
                     ctx.fill();
                 }
                 ctx.restore();
