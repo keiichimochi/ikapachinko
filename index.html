@@ -876,6 +876,7 @@
                     this.buffers = new Map();
                     this.loading = new Map();
                     this.loops = new Map();
+                    this.media = new Map();
                     this.lastPlay = new Map();
                     this.pinDuckUntil = 0;
                     this.enabled = localStorage.getItem("ikapachinkoSound") !== "off";
@@ -907,14 +908,59 @@
                         osc.stop(ctx2.currentTime + 0.01);
                     } catch (e) {}
                     this.preload();
-                    return resumed;
+                    return Promise.allSettled([resumed, this.unlockMedia()]).then(() => {});
                 }
                 setEnabled(enabled) {
                     this.enabled = enabled;
                     localStorage.setItem("ikapachinkoSound", enabled ? "on" : "off");
                     if (!enabled) {
                         for (const id of [...this.loops.keys()]) this.stop(id);
+                        for (const audio of this.media.values()) audio.pause();
                     }
+                }
+                isBgm(id) {
+                    return id === "bgm_main" || id === "bgm_reach" || id === "bgm_atari";
+                }
+                mediaFor(id) {
+                    const def = this.defs[id];
+                    if (!def || !this.isBgm(id)) return null;
+                    if (this.media.has(id)) return this.media.get(id);
+                    const audio = new Audio(this.assetPath(def) + this.filesFor(def)[0]);
+                    audio.loop = true;
+                    audio.preload = "auto";
+                    audio.volume = (def.volume ?? 0.12) * this.master;
+                    this.media.set(id, audio);
+                    return audio;
+                }
+                rewindMedia(audio) {
+                    try {
+                        audio.currentTime = 0;
+                    } catch (e) {}
+                }
+                unlockMedia() {
+                    if (!this.enabled) return Promise.resolve();
+                    const tasks = Object.keys(this.defs)
+                        .filter((id) => this.isBgm(id))
+                        .map((id) => {
+                            const audio = this.mediaFor(id);
+                            if (!audio) return Promise.resolve();
+                            const def = this.defs[id];
+                            audio.muted = true;
+                            audio.volume = 0;
+                            return audio
+                                .play()
+                                .then(() => {
+                                    audio.pause();
+                                    this.rewindMedia(audio);
+                                    audio.muted = false;
+                                    audio.volume = (def.volume ?? 0.12) * this.master;
+                                })
+                                .catch(() => {
+                                    audio.muted = false;
+                                    audio.volume = (def.volume ?? 0.12) * this.master;
+                                });
+                        });
+                    return Promise.allSettled(tasks).then(() => {});
                 }
                 preload() {
                     Object.entries(this.defs).forEach(([id, def]) =>
@@ -1052,6 +1098,10 @@
                 }
                 loop(id, options = {}) {
                     if (!this.enabled) return;
+                    if (this.isBgm(id)) {
+                        this.loopMedia(id, options);
+                        return;
+                    }
                     if (this.loops.has(id)) return;
                     const def = this.defs[id];
                     const ctx2 = this.ensureContext();
@@ -1077,7 +1127,22 @@
                     if (buffer) startLoop(buffer);
                     else this.load(id, file).then(startLoop);
                 }
+                loopMedia(id, options = {}) {
+                    const def = this.defs[id];
+                    const audio = this.mediaFor(id);
+                    if (!def || !audio) return;
+                    if (!audio.paused) return;
+                    audio.loop = true;
+                    audio.muted = false;
+                    audio.volume = (options.volume ?? def.volume ?? 0.08) * this.master;
+                    audio.play().catch(() => {});
+                }
                 stop(id) {
+                    const audio = this.media.get(id);
+                    if (audio) {
+                        audio.pause();
+                        this.rewindMedia(audio);
+                    }
                     const loop = this.loops.get(id);
                     if (!loop || !this.ctx) return;
                     const t = this.ctx.currentTime;
@@ -1131,8 +1196,7 @@
                 audioManager.stop(soundName);
             }
             function startBackgroundMusic() {
-                if (!audioManager.enabled || !audioManager.ctx) return;
-                if (audioManager.ctx.state !== "running") return;
+                if (!audioManager.enabled) return;
                 loopSound("bgm_main");
             }
             addEventListener(
