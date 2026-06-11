@@ -438,17 +438,23 @@
                 }
                 unlock() {
                     const ctx2 = this.ensureContext();
-                    if (!ctx2) return;
-                    if (ctx2.state === "suspended") ctx2.resume().catch(() => {});
-                    const gain = ctx2.createGain();
-                    gain.gain.value = 0.0001;
-                    gain.connect(ctx2.destination);
-                    const osc = ctx2.createOscillator();
-                    osc.frequency.value = 1;
-                    osc.connect(gain);
-                    osc.start();
-                    osc.stop(ctx2.currentTime + 0.01);
+                    if (!ctx2) return Promise.resolve();
+                    const resumed =
+                        ctx2.state === "suspended"
+                            ? ctx2.resume().catch(() => {})
+                            : Promise.resolve();
+                    try {
+                        const gain = ctx2.createGain();
+                        gain.gain.value = 0.0001;
+                        gain.connect(ctx2.destination);
+                        const osc = ctx2.createOscillator();
+                        osc.frequency.value = 1;
+                        osc.connect(gain);
+                        osc.start();
+                        osc.stop(ctx2.currentTime + 0.01);
+                    } catch (e) {}
                     this.preload();
+                    return resumed;
                 }
                 preload() {
                     Object.entries(this.defs).forEach(([id, def]) =>
@@ -495,7 +501,20 @@
                     const def = this.defs[id];
                     const ctx2 = this.ensureContext();
                     if (!def || !ctx2) return;
-                    if (ctx2.state === "suspended") return;
+                    if (ctx2.state === "suspended") {
+                        if (options.retryOnUnlock !== false) {
+                            this.unlock().then(() => {
+                                if (this.ctx && this.ctx.state === "running") {
+                                    this.play(id, {
+                                        ...options,
+                                        cooldown: 0,
+                                        retryOnUnlock: false,
+                                    });
+                                }
+                            });
+                        }
+                        return;
+                    }
                     const nowMs = performance.now();
                     const cooldown = options.cooldown ?? def.cooldown ?? 0;
                     const last = this.lastPlay.get(id) || -Infinity;
@@ -2207,10 +2226,12 @@
             });
             addEventListener("pointerup", () => (dragging = false));
             $("fireBtn").addEventListener("click", () => {
+                audioManager.unlock();
                 playSound("ui_click");
                 launch();
             });
             $("autoBtn").addEventListener("click", () => {
+                audioManager.unlock();
                 autoFire = !autoFire;
                 playSound(autoFire ? "ui_click" : "ui_cancel");
                 $("autoBtn").classList.toggle("on", autoFire);
@@ -2220,6 +2241,7 @@
             addEventListener("keydown", (e) => {
                 if (e.code === "Space") {
                     e.preventDefault();
+                    audioManager.unlock();
                     launch();
                 }
                 if (e.code === "ArrowUp") setPower(power + 0.03);
