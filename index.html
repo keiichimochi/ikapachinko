@@ -502,6 +502,13 @@
             #highScoreList .empty {
                 color: #777786;
             }
+            #highScoreStats {
+                margin-top: 6px;
+                color: #8fdff3;
+                font-size: 9px;
+                line-height: 1.35;
+                font-variant-numeric: tabular-nums;
+            }
             #feverBadge {
                 display: none;
                 text-align: center;
@@ -634,6 +641,7 @@
                     <div class="num" id="scoreCount">0</div>
                     <div class="lbl subLbl">ハイスコア</div>
                     <div id="highScoreList"></div>
+                    <div id="highScoreStats"></div>
                 </div>
                 <div class="card">
                     <div class="lbl">倍率</div>
@@ -1443,6 +1451,8 @@
             const HIGH_SCORE_MILESTONE_KEY = "ikapachinkoScoreMilestones";
             const COLLECTION_KEY = "ikapachinkoPrizeCollection";
             const DEVICE_ID_KEY = "ikapachinkoDeviceId";
+            const PLAYER_NAME_KEY = "ikapachinkoPlayerName";
+            const GAME_ID = "ikapachinko";
             const HIGH_SCORE_MILESTONES = [500, 1000, 2000, 3000, 10000];
             const PRIZE_ASSETS = [
                 { id: "allice", name: "ALLICE", file: "assets/keihin/allice.glb" },
@@ -1484,6 +1494,7 @@
                 }),
             );
             let highScores = loadHighScores();
+            let highScoreStats = loadHighScoreStats();
             let registeredMilestones = loadRegisteredMilestones();
             const deviceId = getDeviceId();
             let prizeCollection = loadPrizeCollection();
@@ -1553,6 +1564,31 @@
             function saveHighScores() {
                 localStorage.setItem(HIGH_SCORE_KEY, JSON.stringify(highScores));
             }
+            function loadHighScoreStats() {
+                try {
+                    return JSON.parse(localStorage.getItem("ikapachinkoHighScoreStats") || "{}");
+                } catch (e) {
+                    return {};
+                }
+            }
+            function saveHighScoreStats() {
+                localStorage.setItem(
+                    "ikapachinkoHighScoreStats",
+                    JSON.stringify(highScoreStats || {}),
+                );
+            }
+            function getPlayerName(promptIfMissing = true) {
+                const saved = (localStorage.getItem(PLAYER_NAME_KEY) || "").trim();
+                if (saved) return saved.slice(0, 12);
+                if (!promptIfMissing) return "IKA";
+                const raw = prompt(
+                    "ハイスコア名を登録してください。次回からこの名前で自動登録します。",
+                    "IKA",
+                );
+                const name = (raw || "IKA").trim().slice(0, 12) || "IKA";
+                localStorage.setItem(PLAYER_NAME_KEY, name);
+                return name;
+            }
             async function fetchSharedHighScores() {
                 const response = await fetch("/api/highscores", {
                     headers: { Accept: "application/json" },
@@ -1560,13 +1596,18 @@
                 });
                 if (!response.ok) throw new Error("shared highscores unavailable");
                 const data = await response.json();
-                return Array.isArray(data.scores) ? data.scores : [];
+                return {
+                    scores: Array.isArray(data.scores) ? data.scores : [],
+                    stats: data.stats || {},
+                };
             }
             async function syncSharedHighScores() {
                 try {
-                    const scores = await fetchSharedHighScores();
+                    const { scores, stats } = await fetchSharedHighScores();
                     highScores = scores;
+                    highScoreStats = stats || {};
                     saveHighScores();
+                    saveHighScoreStats();
                     renderHighScores();
                 } catch (e) {}
             }
@@ -1583,7 +1624,9 @@
                 const data = await response.json();
                 if (Array.isArray(data.scores)) {
                     highScores = data.scores;
+                    highScoreStats = data.stats || highScoreStats;
                     saveHighScores();
+                    saveHighScoreStats();
                     renderHighScores();
                 }
                 return data;
@@ -1592,22 +1635,29 @@
                 highScores.push(entry);
                 highScores = highScores.sort((a, b) => b.score - a.score).slice(0, 20);
                 saveHighScores();
+                highScoreStats = {
+                    ...highScoreStats,
+                    localOnly: true,
+                };
+                saveHighScoreStats();
                 renderHighScores();
                 return highScores.indexOf(entry) + 1;
             }
             function saveGameOverHighScore() {
-                if (score <= 0) return { saved: false, rank: null };
-                const name =
-                    (localStorage.getItem("ikapachinkoPlayerName") || "IKA")
-                        .trim()
-                        .slice(0, 12) || "IKA";
+                const name = score > 0 ? getPlayerName(true) : getPlayerName(false);
                 const entry = {
+                    gameId: GAME_ID,
                     name,
                     score,
                     milestone: "GAME OVER",
                     deviceId,
+                    countPlay: true,
                     date: new Date().toISOString(),
                 };
+                if (score <= 0) {
+                    submitSharedHighScore(entry).catch(() => {});
+                    return { saved: false, rank: null };
+                }
                 const rank = localHighScoreRank(entry);
                 submitSharedHighScore(entry)
                     .then((data) => {
@@ -1698,7 +1748,23 @@
             }
             function renderHighScores() {
                 const list = $("highScoreList");
+                const stats = $("highScoreStats");
                 const top = [...highScores].sort((a, b) => b.score - a.score).slice(0, 5);
+                if (stats) {
+                    const playerName = getPlayerName(false);
+                    const idShort = deviceId.slice(0, 8);
+                    const totalPlays = highScoreStats.totalPlays ?? "-";
+                    const uniqueUsers = highScoreStats.uniqueUsers ?? "-";
+                    stats.textContent =
+                        "共有 " +
+                        totalPlays +
+                        "プレイ / " +
+                        uniqueUsers +
+                        "ユーザー / ID " +
+                        idShort +
+                        " / " +
+                        playerName;
+                }
                 if (top.length === 0) {
                     const empty = document.createElement("div");
                     empty.className = "empty";
@@ -1840,18 +1906,14 @@
                 );
             }
             function registerHighScore(milestone) {
-                const raw = prompt(
-                    milestone +
-                        "点突破! ハイスコア名を入力してください",
-                    localStorage.getItem("ikapachinkoPlayerName") || "IKA",
-                );
-                const name = (raw || "NO NAME").trim().slice(0, 12) || "NO NAME";
-                localStorage.setItem("ikapachinkoPlayerName", name);
+                const name = getPlayerName(true);
                 const entry = {
+                    gameId: GAME_ID,
                     name,
                     score,
                     milestone,
                     deviceId,
+                    countPlay: false,
                     date: new Date().toISOString(),
                 };
                 localHighScoreRank(entry);
