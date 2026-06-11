@@ -4,6 +4,10 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>UFO PACHINKO — 宇宙烈伝</title>
+        <script
+            type="module"
+            src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"
+        ></script>
         <style>
             :root {
                 --bg: #3b3b40;
@@ -43,7 +47,8 @@
                 position: relative;
                 height: 100%;
                 aspect-ratio: 1000/1080;
-                max-width: calc(100vw - 190px);
+                max-width: calc(100vw - 420px);
+                margin: 0 106px;
             }
             canvas {
                 width: 100%;
@@ -218,6 +223,172 @@
                 line-height: 1.5;
                 color: #b9b9c6;
             }
+            .collectionRail {
+                position: absolute;
+                top: 50%;
+                z-index: 4;
+                display: grid;
+                grid-template-columns: repeat(2, 48px);
+                gap: 8px;
+                width: 104px;
+                transform: translateY(-50%);
+            }
+            #badgeRack {
+                right: calc(100% + 10px);
+            }
+            #cardRack {
+                left: calc(100% + 10px);
+            }
+            .collectionTitle {
+                grid-column: 1 / -1;
+                min-height: 22px;
+                border: 1px solid rgba(55, 200, 240, 0.5);
+                border-radius: 8px;
+                background: rgba(10, 10, 14, 0.88);
+                color: #d9f6ff;
+                font-size: 10px;
+                font-weight: 900;
+                line-height: 22px;
+                text-align: center;
+                letter-spacing: 0.16em;
+                box-shadow: 0 0 14px rgba(55, 200, 240, 0.18);
+            }
+            .collectionSlot {
+                position: relative;
+                width: 48px;
+                aspect-ratio: 1;
+                border: 1px solid #343440;
+                border-radius: 8px;
+                background:
+                    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.09), transparent 30%),
+                    #111116;
+                color: #6d6d78;
+                overflow: hidden;
+                box-shadow: inset 0 0 16px rgba(0, 0, 0, 0.5);
+            }
+            .collectionSlot::before {
+                content: attr(data-label);
+                position: absolute;
+                top: 5px;
+                left: 0;
+                right: 0;
+                font-size: 9px;
+                font-weight: 900;
+                line-height: 1;
+                text-align: center;
+            }
+            .collectionSlot::after {
+                content: "?";
+                position: absolute;
+                inset: 17px 0 0;
+                color: #555562;
+                font-size: 18px;
+                font-weight: 900;
+                text-align: center;
+            }
+            .collectionSlot.collected {
+                border-color: rgba(255, 217, 59, 0.8);
+                color: #fff2a0;
+                background:
+                    radial-gradient(circle at 50% 38%, rgba(255, 217, 59, 0.45), transparent 36%),
+                    linear-gradient(145deg, #331438, #102f38);
+                box-shadow:
+                    inset 0 0 14px rgba(255, 255, 255, 0.08),
+                    0 0 14px rgba(255, 217, 59, 0.25);
+            }
+            .collectionSlot.collected::after {
+                content: attr(data-short);
+                inset: 20px 3px 0;
+                color: #ffffff;
+                font-size: 9px;
+                line-height: 1.15;
+                overflow-wrap: anywhere;
+                text-shadow: 0 0 8px rgba(255, 217, 59, 0.55);
+            }
+            .collectionSlot.justUnlocked {
+                animation: prizePop 0.85s ease-out 1;
+            }
+            @keyframes prizePop {
+                0% {
+                    transform: scale(0.86);
+                    filter: brightness(1);
+                }
+                45% {
+                    transform: scale(1.12);
+                    filter: brightness(1.7);
+                }
+                100% {
+                    transform: scale(1);
+                    filter: brightness(1);
+                }
+            }
+            #rewardOverlay {
+                position: fixed;
+                inset: 0;
+                z-index: 20;
+                display: none;
+                align-items: center;
+                justify-content: center;
+                padding: 18px;
+                background: rgba(0, 0, 0, 0.72);
+                backdrop-filter: blur(4px);
+            }
+            #rewardOverlay.show {
+                display: flex;
+            }
+            #rewardPanel {
+                width: min(520px, 94vw);
+                border: 1px solid rgba(255, 217, 59, 0.75);
+                border-radius: 12px;
+                background: #101014;
+                box-shadow:
+                    0 0 38px rgba(255, 217, 59, 0.32),
+                    0 18px 60px rgba(0, 0, 0, 0.7);
+                color: #f0f0f5;
+                overflow: hidden;
+            }
+            #rewardModel {
+                width: 100%;
+                height: 340px;
+                background:
+                    radial-gradient(circle at 50% 40%, rgba(55, 200, 240, 0.22), transparent 48%),
+                    #060609;
+            }
+            #rewardInfo {
+                display: grid;
+                gap: 5px;
+                padding: 12px 14px 14px;
+                border-top: 1px solid #27272f;
+            }
+            #rewardType {
+                color: #37c8f0;
+                font-size: 11px;
+                font-weight: 900;
+                letter-spacing: 0.18em;
+            }
+            #rewardName {
+                color: #ffd93b;
+                font-size: 20px;
+                font-weight: 900;
+            }
+            #rewardStatus {
+                color: #b9b9c6;
+                font-size: 12px;
+                line-height: 1.4;
+            }
+            #rewardClose {
+                justify-self: end;
+                min-width: 96px;
+                min-height: 38px;
+                border: 1px solid #3a3a44;
+                border-radius: 10px;
+                background: #1a1a1f;
+                color: #f0f0f5;
+                cursor: pointer;
+                font-size: 12px;
+                font-weight: 900;
+                letter-spacing: 0.12em;
+            }
             #oddsList {
                 display: grid;
                 grid-template-columns: 1fr;
@@ -286,6 +457,7 @@
                     flex: 0 0 auto;
                     min-height: 0;
                     aspect-ratio: auto;
+                    margin: 0;
                 }
                 #panel {
                     width: 100%;
@@ -315,13 +487,36 @@
                 #msg {
                     flex-basis: 100%;
                 }
+                .collectionRail {
+                    position: static;
+                    display: flex;
+                    flex-wrap: wrap;
+                    width: 100%;
+                    transform: none;
+                    order: 3;
+                }
+                .collectionTitle {
+                    width: 100%;
+                    flex: 0 0 100%;
+                }
+                .collectionSlot {
+                    width: calc((100% - 32px) / 5);
+                    max-width: 58px;
+                }
+                #rewardModel {
+                    height: 300px;
+                }
             }
         </style>
     </head>
     <body>
         <button id="soundBtn" type="button">SOUND</button>
         <div id="wrap">
-            <div id="boardBox"><canvas id="cv"></canvas></div>
+            <div id="boardBox">
+                <canvas id="cv"></canvas>
+                <div id="badgeRack" class="collectionRail" aria-label="バッジ収集枠"></div>
+                <div id="cardRack" class="collectionRail" aria-label="カード収集枠"></div>
+            </div>
             <div id="panel">
                 <div class="card">
                     <div class="lbl">持ち玉</div>
@@ -376,6 +571,24 @@
                 </div>
             </div>
         </div>
+        <div id="rewardOverlay" aria-live="polite">
+            <div id="rewardPanel">
+                <model-viewer
+                    id="rewardModel"
+                    camera-controls
+                    auto-rotate
+                    shadow-intensity="0.85"
+                    exposure="1.05"
+                    alt="獲得景品の3Dプレビュー"
+                ></model-viewer>
+                <div id="rewardInfo">
+                    <div id="rewardType">PRIZE</div>
+                    <div id="rewardName">---</div>
+                    <div id="rewardStatus">ガチャ動画のあとに景品が表示されます。</div>
+                    <button id="rewardClose" type="button">閉じる</button>
+                </div>
+            </div>
+        </div>
 
         <script>
             "use strict";
@@ -417,9 +630,7 @@
             gachaVideo.playsInline = true;
             gachaVideo.preload = "auto";
             let gachaMovieFrames = 0;
-            gachaVideo.addEventListener("ended", () => {
-                gachaMovieFrames = 0;
-            });
+            gachaVideo.addEventListener("ended", finishGachaMovie);
             let DPR = 1;
             function resize() {
                 DPR = Math.min(window.devicePixelRatio || 1, 2);
@@ -1087,9 +1298,45 @@
             let debugGeometry = false;
             const HIGH_SCORE_KEY = "ikapachinkoHighScores";
             const HIGH_SCORE_MILESTONE_KEY = "ikapachinkoScoreMilestones";
+            const COLLECTION_KEY = "ikapachinkoPrizeCollection";
+            const DEVICE_ID_KEY = "ikapachinkoDeviceId";
             const HIGH_SCORE_MILESTONES = [500, 1000, 2000, 3000, 10000];
+            const PRIZE_ASSETS = [
+                { id: "chaiyo", name: "CHAIYO", file: "assets/keihin/chaiyo.glb" },
+                {
+                    id: "kiyoshi-grass",
+                    name: "KIYOSHI GRASS",
+                    file: "assets/keihin/kiyoshi-grass.glb",
+                },
+                { id: "okonomi", name: "OKONOMI", file: "assets/keihin/okonomi.glb" },
+            ];
+            const PRIZE_TYPES = [
+                { type: "badge", label: "バッジ", rackId: "badgeRack", prefix: "B" },
+                { type: "card", label: "カード", rackId: "cardRack", prefix: "C" },
+            ];
+            const PRIZE_SLOTS = PRIZE_TYPES.flatMap((typeDef) =>
+                Array.from({ length: 10 }, (_, i) => {
+                    const offset = typeDef.type === "card" ? 1 : 0;
+                    const asset = PRIZE_ASSETS[(i + offset) % PRIZE_ASSETS.length];
+                    return {
+                        id: typeDef.type + "-" + (i + 1),
+                        slot: i + 1,
+                        type: typeDef.type,
+                        typeLabel: typeDef.label,
+                        prefix: typeDef.prefix,
+                        assetId: asset.id,
+                        assetFile: asset.file,
+                        assetName: asset.name,
+                        title: typeDef.label + " " + String(i + 1).padStart(2, "0"),
+                    };
+                }),
+            );
             let highScores = loadHighScores();
             let registeredMilestones = loadRegisteredMilestones();
+            const deviceId = getDeviceId();
+            let prizeCollection = loadPrizeCollection();
+            let pendingGachaReward = null;
+            let rewardOverlayTimer = 0;
             const SLOT_SYMBOLS = [
                 { sym: "🦑", mult: 100 },
                 { sym: "🍺", mult: 50 },
@@ -1155,6 +1402,41 @@
                     JSON.stringify([...registeredMilestones]),
                 );
             }
+            function getDeviceId() {
+                let id = localStorage.getItem(DEVICE_ID_KEY);
+                if (id) return id;
+                const bytes = new Uint8Array(8);
+                if (window.crypto && window.crypto.getRandomValues) {
+                    window.crypto.getRandomValues(bytes);
+                    id = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+                } else {
+                    id = Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+                }
+                localStorage.setItem(DEVICE_ID_KEY, id);
+                return id;
+            }
+            function loadPrizeCollection() {
+                try {
+                    const parsed = JSON.parse(localStorage.getItem(COLLECTION_KEY) || "[]");
+                    if (Array.isArray(parsed)) return new Set(parsed);
+                    if (parsed && Array.isArray(parsed.collected)) {
+                        return new Set(parsed.collected);
+                    }
+                    return new Set();
+                } catch (e) {
+                    return new Set();
+                }
+            }
+            function savePrizeCollection() {
+                localStorage.setItem(
+                    COLLECTION_KEY,
+                    JSON.stringify({
+                        deviceId,
+                        collected: [...prizeCollection],
+                        updatedAt: new Date().toISOString(),
+                    }),
+                );
+            }
             function ui() {
                 $("ballCount").textContent = stock;
                 $("winCount").textContent = wins;
@@ -1162,6 +1444,7 @@
                 $("feverBadge").style.display = fever > 0 ? "block" : "none";
                 renderOdds();
                 renderHighScores();
+                renderPrizeCollection();
             }
             function say(t) {
                 $("msg").textContent = t;
@@ -1195,6 +1478,99 @@
                             i + 1 + ". " + entry.name + " " + entry.score + "点";
                         return row;
                     }),
+                );
+            }
+            function renderPrizeCollection() {
+                for (const typeDef of PRIZE_TYPES) {
+                    const rack = $(typeDef.rackId);
+                    if (!rack) continue;
+                    if (!rack.dataset.ready) {
+                        const title = document.createElement("div");
+                        title.className = "collectionTitle";
+                        title.textContent = typeDef.label + " 0/10";
+                        rack.appendChild(title);
+                        for (let i = 1; i <= 10; i++) {
+                            const slotNode = document.createElement("div");
+                            slotNode.className = "collectionSlot";
+                            slotNode.dataset.slot = String(i);
+                            slotNode.dataset.label = typeDef.prefix + String(i).padStart(2, "0");
+                            slotNode.dataset.short = "";
+                            rack.appendChild(slotNode);
+                        }
+                        rack.dataset.ready = "1";
+                    }
+                    const prizes = PRIZE_SLOTS.filter((p) => p.type === typeDef.type);
+                    const collectedCount = prizes.filter((p) => prizeCollection.has(p.id)).length;
+                    const title = rack.querySelector(".collectionTitle");
+                    if (title) title.textContent = typeDef.label + " " + collectedCount + "/10";
+                    for (const prize of prizes) {
+                        const slotNode = rack.querySelector(
+                            '.collectionSlot[data-slot="' + prize.slot + '"]',
+                        );
+                        if (!slotNode) continue;
+                        const collected = prizeCollection.has(prize.id);
+                        slotNode.classList.toggle("collected", collected);
+                        slotNode.dataset.short = collected
+                            ? prize.assetName.replace(/\s+/g, "\n")
+                            : "";
+                        slotNode.title = collected
+                            ? prize.title + " / " + prize.assetName
+                            : prize.title + " / 未獲得";
+                    }
+                }
+            }
+            function pickPrize() {
+                const uncollected = PRIZE_SLOTS.filter((p) => !prizeCollection.has(p.id));
+                const pool = uncollected.length > 0 ? uncollected : PRIZE_SLOTS;
+                return pool[Math.floor(Math.random() * pool.length)];
+            }
+            function prepareGachaReward() {
+                pendingGachaReward = pickPrize();
+            }
+            function finishGachaMovie() {
+                if (gachaMovieFrames <= 0 && !pendingGachaReward) return;
+                gachaMovieFrames = 0;
+                if (pendingGachaReward) revealPrize(pendingGachaReward);
+                pendingGachaReward = null;
+            }
+            function revealPrize(prize) {
+                const isNew = !prizeCollection.has(prize.id);
+                prizeCollection.add(prize.id);
+                savePrizeCollection();
+                renderPrizeCollection();
+                const rackDef = PRIZE_TYPES.find((entry) => entry.type === prize.type);
+                const rack = rackDef ? $(rackDef.rackId) : null;
+                const slotNode = rack
+                    ? rack.querySelector('.collectionSlot[data-slot="' + prize.slot + '"]')
+                    : null;
+                if (slotNode) {
+                    slotNode.classList.remove("justUnlocked");
+                    void slotNode.offsetWidth;
+                    slotNode.classList.add("justUnlocked");
+                }
+                const model = $("rewardModel");
+                if (model) {
+                    model.setAttribute("src", prize.assetFile);
+                    model.setAttribute("alt", prize.title + " " + prize.assetName);
+                }
+                $("rewardType").textContent =
+                    prize.typeLabel +
+                    " / " +
+                    prize.prefix +
+                    String(prize.slot).padStart(2, "0");
+                $("rewardName").textContent = prize.assetName;
+                $("rewardStatus").textContent = isNew
+                    ? "新しい景品を獲得。台の周りの枠が1つ埋まりました。"
+                    : "重複景品。コレクションはすでに登録済みです。";
+                $("rewardOverlay").classList.add("show");
+                rewardOverlayTimer = 60 * 5;
+                say(
+                    "景品GET! " +
+                        prize.typeLabel +
+                        " " +
+                        String(prize.slot).padStart(2, "0") +
+                        " / " +
+                        prize.assetName,
                 );
             }
             function registerHighScore(milestone) {
@@ -1827,6 +2203,7 @@
             function playGachaMovie() {
                 const seconds = Math.max(3, Math.min(7, gachaVideo.duration || 4));
                 gachaMovieFrames = Math.ceil(seconds * 60);
+                prepareGachaReward();
                 try {
                     gachaVideo.currentTime = 0;
                     const playback = gachaVideo.play();
@@ -2526,6 +2903,17 @@
                 playSound("ui_click");
                 say("AUTO発射間隔 " + autoFireInterval + "F に変更したナリ。");
             });
+            $("rewardClose").addEventListener("click", () => {
+                $("rewardOverlay").classList.remove("show");
+                rewardOverlayTimer = 0;
+                playSound("ui_click");
+            });
+            $("rewardOverlay").addEventListener("click", (e) => {
+                if (e.target === $("rewardOverlay")) {
+                    $("rewardOverlay").classList.remove("show");
+                    rewardOverlayTimer = 0;
+                }
+            });
             $("fireBtn").addEventListener("click", () => {
                 requestSoundUnlock();
                 playSound("ui_click");
@@ -2585,7 +2973,14 @@
             function loop() {
                 step();
                 updateSlot();
-                if (gachaMovieFrames > 0) gachaMovieFrames--;
+                if (gachaMovieFrames > 0) {
+                    gachaMovieFrames--;
+                    if (gachaMovieFrames === 0) finishGachaMovie();
+                }
+                if (rewardOverlayTimer > 0) {
+                    rewardOverlayTimer--;
+                    if (rewardOverlayTimer === 0) $("rewardOverlay").classList.remove("show");
+                }
                 if (fever > 0) {
                     fever--;
                     if (fever === 0) endFever("FEVER終了!");
