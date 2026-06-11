@@ -158,6 +158,39 @@
                 color: #e8c0ff;
                 box-shadow: 0 0 16px rgba(177, 76, 232, 0.45);
             }
+            #soundBtn {
+                position: fixed;
+                top: calc(12px + env(safe-area-inset-top));
+                right: calc(12px + env(safe-area-inset-right));
+                z-index: 10;
+                min-width: 92px;
+                min-height: 42px;
+                padding: 10px 14px;
+                border: 1px solid rgba(55, 200, 240, 0.75);
+                border-radius: 12px;
+                cursor: pointer;
+                background: rgba(16, 16, 20, 0.88);
+                color: #d9f6ff;
+                font-size: 12px;
+                font-weight: 900;
+                letter-spacing: 0.12em;
+                box-shadow:
+                    0 0 16px rgba(55, 200, 240, 0.28),
+                    0 6px 18px rgba(0, 0, 0, 0.35);
+                backdrop-filter: blur(8px);
+                touch-action: manipulation;
+            }
+            #soundBtn.on {
+                border-color: #ffd93b;
+                color: #1a0505;
+                background: linear-gradient(180deg, #ffe86b, #e8a020);
+                box-shadow:
+                    0 0 18px rgba(255, 217, 59, 0.45),
+                    0 5px 0 rgba(156, 106, 16, 0.7);
+            }
+            #soundBtn:active {
+                transform: translateY(2px);
+            }
             #msg {
                 min-height: 34px;
                 font-size: 11px;
@@ -239,6 +272,14 @@
                 #fireBtn {
                     padding: 12px 0;
                 }
+                #soundBtn {
+                    top: calc(10px + env(safe-area-inset-top));
+                    right: calc(10px + env(safe-area-inset-right));
+                    min-width: 86px;
+                    min-height: 40px;
+                    padding: 9px 12px;
+                    font-size: 11px;
+                }
                 #msg {
                     flex-basis: 100%;
                 }
@@ -246,6 +287,7 @@
         </style>
     </head>
     <body>
+        <button id="soundBtn" type="button">SOUND</button>
         <div id="wrap">
             <div id="boardBox"><canvas id="cv"></canvas></div>
             <div id="panel">
@@ -634,6 +676,20 @@
             const audioManager = new AudioManager(SFX_DEFS);
             window.SFX_DEFS = SFX_DEFS;
             window.audioManager = audioManager;
+            function updateSoundButton() {
+                const btn = document.getElementById("soundBtn");
+                if (!btn) return;
+                const on = Boolean(audioManager.ctx && audioManager.ctx.state === "running");
+                btn.classList.toggle("on", on);
+                btn.textContent = on ? "SOUND ON" : "SOUND";
+            }
+            function requestSoundUnlock() {
+                const unlocked = audioManager.unlock();
+                updateSoundButton();
+                unlocked.then(updateSoundButton);
+                setTimeout(updateSoundButton, 250);
+                return unlocked;
+            }
             function playSound(soundName, options) {
                 audioManager.play(soundName, options);
             }
@@ -646,14 +702,14 @@
             addEventListener(
                 "click",
                 () => {
-                    audioManager.unlock();
+                    requestSoundUnlock();
                 },
                 { once: true, capture: true },
             );
             addEventListener(
                 "keydown",
                 () => {
-                    audioManager.unlock();
+                    requestSoundUnlock();
                 },
                 { once: true },
             );
@@ -2226,22 +2282,27 @@
             });
             addEventListener("pointerup", () => (dragging = false));
             $("fireBtn").addEventListener("click", () => {
-                audioManager.unlock();
+                requestSoundUnlock();
                 playSound("ui_click");
                 launch();
             });
             $("autoBtn").addEventListener("click", () => {
-                audioManager.unlock();
+                requestSoundUnlock();
                 autoFire = !autoFire;
                 playSound(autoFire ? "ui_click" : "ui_cancel");
                 $("autoBtn").classList.toggle("on", autoFire);
                 $("autoBtn").textContent =
                     "AUTO 連射 " + (autoFire ? "ON" : "OFF");
             });
+            $("soundBtn").addEventListener("click", () => {
+                requestSoundUnlock();
+                playSound("ui_click", { cooldown: 0 });
+                say("SOUND ON。音が出る準備ができたナリ。");
+            });
             addEventListener("keydown", (e) => {
                 if (e.code === "Space") {
                     e.preventDefault();
-                    audioManager.unlock();
+                    requestSoundUnlock();
                     launch();
                 }
                 if (e.code === "ArrowUp") setPower(power + 0.03);
