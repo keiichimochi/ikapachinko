@@ -389,6 +389,74 @@
                 font-weight: 900;
                 letter-spacing: 0.12em;
             }
+            #gameOverOverlay {
+                position: fixed;
+                inset: 0;
+                z-index: 24;
+                display: none;
+                align-items: center;
+                justify-content: center;
+                padding: 18px;
+                background: rgba(0, 0, 0, 0.78);
+                backdrop-filter: blur(5px);
+            }
+            #gameOverOverlay.show {
+                display: flex;
+            }
+            #gameOverPanel {
+                width: min(440px, 92vw);
+                border: 1px solid rgba(255, 79, 163, 0.85);
+                border-radius: 12px;
+                padding: 24px 18px 18px;
+                background:
+                    radial-gradient(circle at 50% 0%, rgba(255, 79, 163, 0.2), transparent 48%),
+                    #101014;
+                box-shadow:
+                    0 0 42px rgba(255, 79, 163, 0.28),
+                    0 18px 60px rgba(0, 0, 0, 0.75);
+                color: #f0f0f5;
+                text-align: center;
+            }
+            #gameOverTitle {
+                color: #ff4fa3;
+                font-size: 30px;
+                font-weight: 900;
+                letter-spacing: 0.12em;
+                text-shadow: 0 0 18px rgba(255, 79, 163, 0.65);
+            }
+            #gameOverScore {
+                margin-top: 10px;
+                color: #ffd93b;
+                font-size: 34px;
+                font-weight: 900;
+                font-variant-numeric: tabular-nums;
+                text-shadow: 0 0 18px rgba(255, 217, 59, 0.45);
+            }
+            #gameOverHighScore {
+                min-height: 22px;
+                margin-top: 8px;
+                color: #d9f6ff;
+                font-size: 12px;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+            }
+            #restartBtn {
+                width: 100%;
+                min-height: 48px;
+                margin-top: 18px;
+                border: none;
+                border-radius: 10px;
+                background: linear-gradient(180deg, #ffd93b, #e8a020);
+                color: #1a0505;
+                cursor: pointer;
+                font-size: 15px;
+                font-weight: 900;
+                letter-spacing: 0.12em;
+                box-shadow:
+                    0 4px 0 #9c6a10,
+                    0 0 24px rgba(255, 217, 59, 0.35);
+                touch-action: manipulation;
+            }
             #oddsList {
                 display: grid;
                 grid-template-columns: 1fr;
@@ -610,6 +678,14 @@
                 </div>
             </div>
         </div>
+        <div id="gameOverOverlay" aria-live="assertive">
+            <div id="gameOverPanel">
+                <div id="gameOverTitle">GAME OVER</div>
+                <div id="gameOverScore">0点</div>
+                <div id="gameOverHighScore">ハイスコア保存中...</div>
+                <button id="restartBtn" type="button">もう１回プレイ</button>
+            </div>
+        </div>
 
         <script>
             "use strict";
@@ -763,6 +839,12 @@
                     file: "reach.mp3",
                     path: "assets/bgm/",
                     volume: 0.32,
+                    loop: true,
+                },
+                bgm_atari: {
+                    file: "atari.mp3",
+                    path: "assets/bgm/",
+                    volume: 0.34,
                     loop: true,
                 },
             };
@@ -1327,6 +1409,7 @@
             const balls = [];
             const FX = []; // particles / popup texts
             const tentacleFX = [];
+            const INITIAL_STOCK = 250;
             let stock = 250,
                 wins = 0,
                 score = 0,
@@ -1334,11 +1417,13 @@
                 autoFire = true,
                 autoTimer = 0,
                 autoFireInterval = 18;
+            const BALLS_PER_LAUNCH = 3;
             let tentacleSpawnTimer = 45;
             let frameCount = 0;
             let fever = 0; // frames remaining
             let feverCatch = 0;
             let reserve = 0; // 保留 (queued spins) max 4
+            let gameOver = false;
             let debugGeometry = false;
             const HIGH_SCORE_KEY = "ikapachinkoHighScores";
             const HIGH_SCORE_MILESTONE_KEY = "ikapachinkoScoreMilestones";
@@ -1442,6 +1527,24 @@
             }
             function saveHighScores() {
                 localStorage.setItem(HIGH_SCORE_KEY, JSON.stringify(highScores));
+            }
+            function saveGameOverHighScore() {
+                if (score <= 0) return { saved: false, rank: null };
+                const name =
+                    (localStorage.getItem("ikapachinkoPlayerName") || "IKA")
+                        .trim()
+                        .slice(0, 12) || "IKA";
+                const entry = {
+                    name,
+                    score,
+                    milestone: "GAME OVER",
+                    date: new Date().toISOString(),
+                };
+                highScores.push(entry);
+                highScores = highScores.sort((a, b) => b.score - a.score).slice(0, 20);
+                saveHighScores();
+                renderHighScores();
+                return { saved: true, rank: highScores.indexOf(entry) + 1 };
             }
             function loadRegisteredMilestones() {
                 try {
@@ -1609,10 +1712,17 @@
                 if (model) {
                     model.setAttribute("src", prize.assetFile);
                     model.setAttribute("alt", prize.title + " " + prize.assetName);
+                    if (prize.type === "badge") {
+                        model.setAttribute("camera-orbit", "0deg 0deg 105%");
+                        model.setAttribute("field-of-view", "26deg");
+                    } else {
+                        model.removeAttribute("camera-orbit");
+                        model.removeAttribute("field-of-view");
+                    }
                 }
                 $("rewardType").textContent =
                     prize.typeLabel +
-                    " / " +
+                    "Get! / " +
                     prize.prefix +
                     String(prize.slot).padStart(2, "0");
                 $("rewardName").textContent = prize.assetName;
@@ -1620,11 +1730,13 @@
                     ? "新しい景品を獲得。台の周りの枠が1つ埋まりました。"
                     : "重複景品。コレクションはすでに登録済みです。";
                 $("rewardOverlay").classList.add("show");
-                rewardOverlayTimer = 60 * 5;
+                rewardOverlayTimer = 60 * 7;
                 say(
-                    "景品GET! " +
+                    prize.typeLabel +
+                        "Get! " +
                         prize.typeLabel +
-                        " " +
+                    " / " +
+                    prize.prefix +
                         String(prize.slot).padStart(2, "0") +
                         " / " +
                         prize.assetName,
@@ -1665,14 +1777,25 @@
                 ui();
                 setTimeout(checkHighScoreMilestones, 50);
             }
+            function isGameOverReady() {
+                return (
+                    stock < BALLS_PER_LAUNCH &&
+                    balls.length === 0 &&
+                    !slot.spin &&
+                    fever <= 0 &&
+                    reserve === 0
+                );
+            }
 
             /* ---------- launching ---------- */
             function launch() {
-                if (stock <= 0) {
-                    say("玉切れ!リロードは…ないナリ。F5で再挑戦!");
+                if (gameOver) return;
+                if (stock < BALLS_PER_LAUNCH) {
+                    if (isGameOverReady()) triggerGameOver();
+                    else say("持ち玉あと少し…最後の玉に祈るナリ!");
                     return;
                 }
-                stock--;
+                stock -= BALLS_PER_LAUNCH;
                 const a = 118 * D2R; // bottom-left on the rim
                 const px = CX + Math.cos(a) * (R - 14),
                     py = CY + Math.sin(a) * (R - 14);
@@ -1692,6 +1815,75 @@
                     still: 0,
                 });
                 playSound("ball_launch");
+                ui();
+            }
+            function triggerGameOver() {
+                if (gameOver) return;
+                gameOver = true;
+                autoFire = false;
+                $("autoBtn").classList.remove("on");
+                $("autoBtn").textContent = "AUTO 連射 OFF";
+                stopSound("bgm_main");
+                stopSound("bgm_reach");
+                stopSound("bgm_atari");
+                playSound("miss_drop", { volume: 0.45, cooldown: 0 });
+                const result = saveGameOverHighScore();
+                $("gameOverScore").textContent = score + "点";
+                $("gameOverHighScore").textContent = result.saved
+                    ? "ハイスコア保存完了" + (result.rank ? " / " + result.rank + "位" : "")
+                    : "スコア0点。次こそ登録ナリ。";
+                $("gameOverOverlay").classList.add("show");
+                say("GAME OVER! ハイスコアを保存したナリ。");
+                for (let i = 0; i < 60; i++) {
+                    FX.push({
+                        x: CX + (Math.random() - 0.5) * 360,
+                        y: 260 + Math.random() * 260,
+                        vx: (Math.random() - 0.5) * 4,
+                        vy: -1 - Math.random() * 3,
+                        t: ["GAME", "OVER", "★", "!!"][i % 4],
+                        c: ["#ff4fa3", "#ffd93b", "#37c8f0", "#ffffff"][i % 4],
+                        life: 70 + Math.random() * 70,
+                    });
+                }
+                ui();
+            }
+            function resetGame() {
+                stock = INITIAL_STOCK;
+                wins = 0;
+                score = 0;
+                autoFire = true;
+                autoTimer = 0;
+                fever = 0;
+                feverCatch = 0;
+                reserve = 0;
+                gameOver = false;
+                balls.length = 0;
+                FX.length = 0;
+                tentacleFX.length = 0;
+                slot.spin = false;
+                slot.t = 0;
+                slot.winLines = [];
+                slot.lastMult = 0;
+                slot.reach = false;
+                slot.reachTriggered = false;
+                slot.reachLine = null;
+                slot.reachPulse = 0;
+                slot.outcomeText = "";
+                slot.outcomeTimer = 0;
+                for (const pk of pockets) {
+                    pk.open = pk.type !== "attacker";
+                    pk.cool = 0;
+                    pk.catchCount = 0;
+                }
+                stopSound("bgm_reach");
+                stopSound("bgm_atari");
+                startBackgroundMusic();
+                $("gameOverOverlay").classList.remove("show");
+                $("rewardOverlay").classList.remove("show");
+                rewardOverlayTimer = 0;
+                $("autoBtn").classList.add("on");
+                $("autoBtn").textContent = "AUTO 連射 ON";
+                say("もう1回いくナリ!");
                 ui();
             }
 
@@ -2353,6 +2545,7 @@
                     if (slot.winLines.length > 0) {
                         bigWin();
                     } else {
+                        startBackgroundMusic();
                         slot.outcomeText = "";
                         slot.outcomeTimer = 0;
                         say("ハズレ…次いくナリ!");
@@ -2369,6 +2562,7 @@
                 slot.reachTriggered = true;
                 slot.reachPulse = 190;
                 say("リーチ! 最後のリールに魂を込めるナリ!");
+                stopSound("bgm_main");
                 loopSound("bgm_reach");
                 playSound("slot_near_miss", { volume: 0.45 });
                 popup(SLOT_RECT.x + SLOT_RECT.w / 2, SLOT_RECT.y + 40, "リーチ!", "#ff4fa3");
@@ -2393,6 +2587,11 @@
                 slot.reach = false;
                 slot.outcomeText = "当たり🎯  大当たり🪎";
                 slot.outcomeTimer = 210;
+                if (slot.reachTriggered) {
+                    stopSound("bgm_main");
+                    stopSound("bgm_reach");
+                    loopSound("bgm_atari");
+                }
                 stock += slot.lastMult;
                 addScore(slot.lastMult, "slot", SLOT_RECT.x + SLOT_RECT.w / 2, SLOT_RECT.y + 40);
                 for (const pk of pockets)
@@ -2428,6 +2627,8 @@
             }
             function endFever(t) {
                 fever = 0;
+                stopSound("bgm_atari");
+                startBackgroundMusic();
                 for (const pk of pockets)
                     if (pk.type === "attacker") pk.open = false;
                 say(t + (reserve > 0 ? " 保留消化いくナリ!" : ""));
@@ -3095,6 +3296,11 @@
                     rewardOverlayTimer = 0;
                 }
             });
+            $("restartBtn").addEventListener("click", () => {
+                requestSoundUnlock();
+                playSound("ui_click", { cooldown: 0 });
+                resetGame();
+            });
             $("fireBtn").addEventListener("click", () => {
                 requestSoundUnlock();
                 playSound("ui_click");
@@ -3176,6 +3382,12 @@
                         autoTimer = 0;
                         launch();
                     }
+                }
+                if (
+                    !gameOver &&
+                    isGameOverReady()
+                ) {
+                    triggerGameOver();
                 }
                 draw();
                 requestAnimationFrame(loop);
