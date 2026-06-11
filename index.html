@@ -1430,6 +1430,8 @@
                 autoTimer = 0,
                 autoFireInterval = 18;
             const BALLS_PER_LAUNCH = 2;
+            const TENTACLE_STOCK_PENALTY = 3;
+            const TENTACLE_SPAWN_CHANCE = 0.225;
             let tentacleSpawnTimer = 45;
             let frameCount = 0;
             let fever = 0; // frames remaining
@@ -2285,7 +2287,7 @@
                 FX.push({ x, y, t, c, life: 60 });
             }
             function spawnTentacleTulip(pk, force = false) {
-                if (!force && Math.random() > 0.45) return false;
+                if (!force && Math.random() > TENTACLE_SPAWN_CHANCE) return false;
                 const count = 2 + Math.floor(Math.random() * 3);
                 const lean = pk.x < CX ? 0.16 : -0.16;
                 tentacleFX.push({
@@ -2434,9 +2436,17 @@
                         if (tentacle.hitCooldown <= 0) {
                             tentacle.hitCooldown = 18;
                             rotateBallVelocity(b);
+                            stock = Math.max(0, stock - TENTACLE_STOCK_PENALTY);
                             playSound("tentacle_grab");
                             playSound("ball_deflect", { cooldown: 110 });
                             popup(b.x, b.y - 24, "入れない!", "#ffffff");
+                            popup(
+                                b.x,
+                                b.y - 46,
+                                "-" + TENTACLE_STOCK_PENALTY + "玉",
+                                "#ff4fa3",
+                            );
+                            ui();
                         }
                         return true;
                     }
