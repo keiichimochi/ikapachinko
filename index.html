@@ -406,10 +406,18 @@
             #highScoreList {
                 display: grid;
                 gap: 3px;
+                margin-top: 4px;
+                padding-top: 6px;
+                border-top: 1px solid rgba(255, 255, 255, 0.08);
                 font-size: 10px;
                 line-height: 1.25;
                 color: #d8d8e2;
                 font-variant-numeric: tabular-nums;
+            }
+            .subLbl {
+                margin-top: 8px;
+                margin-bottom: 0;
+                font-size: 9px;
             }
             #highScoreList .empty {
                 color: #777786;
@@ -541,17 +549,15 @@
                     <div class="lbl">大当り回数</div>
                     <div class="num small" id="winCount">0</div>
                 </div>
-                <div class="card">
+                <div class="card" id="scoreCard">
                     <div class="lbl">スコア</div>
                     <div class="num" id="scoreCount">0</div>
+                    <div class="lbl subLbl">ハイスコア</div>
+                    <div id="highScoreList"></div>
                 </div>
                 <div class="card">
                     <div class="lbl">倍率</div>
                     <div id="oddsList"></div>
-                </div>
-                <div class="card">
-                    <div class="lbl">ハイスコア</div>
-                    <div id="highScoreList"></div>
                 </div>
                 <div class="card">
                     <div class="lbl">発射強度</div>
@@ -751,6 +757,12 @@
                     file: "pachinkobgm1.mp3",
                     path: "assets/bgm/",
                     volume: 0.16,
+                    loop: true,
+                },
+                bgm_reach: {
+                    file: "reach.mp3",
+                    path: "assets/bgm/",
+                    volume: 0.32,
                     loop: true,
                 },
             };
@@ -2198,6 +2210,7 @@
                 slot.reachPulse = 0;
                 slot.outcomeText = "";
                 slot.outcomeTimer = 0;
+                stopSound("bgm_reach");
                 slot.vel = Array.from(
                     { length: SLOT_CELLS },
                     (_, i) => 0.42 + i * 0.025 + Math.random() * 0.12,
@@ -2334,6 +2347,7 @@
                     slot.spin = false;
                     slot.reach = false;
                     slot.reachPulse = 0;
+                    stopSound("bgm_reach");
                     slot.winLines = findWinLines(slot.result);
                     slot.lastMult = bestMultiplier(slot.winLines, slot.result);
                     if (slot.winLines.length > 0) {
@@ -2355,6 +2369,7 @@
                 slot.reachTriggered = true;
                 slot.reachPulse = 190;
                 say("リーチ! 最後のリールに魂を込めるナリ!");
+                loopSound("bgm_reach");
                 playSound("slot_near_miss", { volume: 0.45 });
                 popup(SLOT_RECT.x + SLOT_RECT.w / 2, SLOT_RECT.y + 40, "リーチ!", "#ff4fa3");
                 for (let i = 0; i < 32; i++) {
