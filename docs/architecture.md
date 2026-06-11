@@ -4,8 +4,13 @@
 
 - `index.html`: ゲーム本体、UI、抽選、収集状態管理を含む単体HTMLアプリ。
 - `assets/movie/gacha.mp4`: ガチャ演出動画。
+- `assets/bgm/*.mp3`: バックグラウンドミュージック。
 - `assets/keihin/*.glb`: 景品3Dモデル。
 - `localStorage`: 端末ID、景品収集状態、既存ハイスコアを保存。
+
+## 音声再生
+
+SFXとBGMは `AudioManager` で一元管理する。BGMは音声定義に `path` を持たせ、`assets/bgm/pachinkobgm1.mp3` をループ再生する。ブラウザの自動再生制限に合わせて、クリック、キー入力、SOUNDボタン操作後に再生開始する。
 
 ## 景品収集フロー
 

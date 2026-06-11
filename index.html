@@ -732,6 +732,12 @@
                 },
                 attack_hit: { file: "attack_hit.wav", volume: 0.6, cooldown: 90 },
                 miss_drop: { file: "miss_drop.wav", volume: 0.22, cooldown: 140 },
+                bgm_main: {
+                    file: "pachinkobgm1.mp3",
+                    path: "assets/bgm/",
+                    volume: 0.16,
+                    loop: true,
+                },
             };
 
             class AudioManager {
@@ -796,6 +802,9 @@
                 bufferKey(id, file) {
                     return id + ":" + file;
                 }
+                assetPath(def) {
+                    return def.path || "assets/sfx/";
+                }
                 load(id, preferredFile = null) {
                     const def = this.defs[id];
                     const ctx2 = this.ensureContext();
@@ -805,7 +814,7 @@
                     if (this.buffers.has(key) || this.loading.has(key)) {
                         return this.loading.get(key);
                     }
-                    const task = fetch("assets/sfx/" + file)
+                    const task = fetch(this.assetPath(def) + file)
                         .then((res) => (res.ok ? res.arrayBuffer() : null))
                         .then((buf) => (buf ? ctx2.decodeAudioData(buf) : null))
                         .then((audioBuffer) => {
@@ -976,7 +985,10 @@
                 }
                 const unlocked = audioManager.unlock();
                 updateSoundButton();
-                unlocked.then(updateSoundButton);
+                unlocked.then(() => {
+                    updateSoundButton();
+                    startBackgroundMusic();
+                });
                 setTimeout(updateSoundButton, 250);
                 return unlocked;
             }
@@ -988,6 +1000,11 @@
             }
             function stopSound(soundName) {
                 audioManager.stop(soundName);
+            }
+            function startBackgroundMusic() {
+                if (!audioManager.enabled || !audioManager.ctx) return;
+                if (audioManager.ctx.state !== "running") return;
+                loopSound("bgm_main");
             }
             addEventListener(
                 "click",
@@ -2932,15 +2949,19 @@
                     audioManager.setEnabled(true);
                     soundToggleReady = true;
                     updateSoundButton();
-                    requestSoundUnlock().then(() =>
-                        playSound("ui_click", { cooldown: 0, force: true }),
-                    );
+                    const unlocked = requestSoundUnlock();
+                    unlocked.then(() => {
+                        playSound("ui_click", { cooldown: 0, force: true });
+                        startBackgroundMusic();
+                    });
                     say("SOUND ON。音が出る準備ができたナリ。");
                 } else if (!soundToggleReady) {
                     soundToggleReady = true;
-                    requestSoundUnlock().then(() =>
-                        playSound("ui_click", { cooldown: 0, force: true }),
-                    );
+                    const unlocked = requestSoundUnlock();
+                    unlocked.then(() => {
+                        playSound("ui_click", { cooldown: 0, force: true });
+                        startBackgroundMusic();
+                    });
                     say("SOUND ON。音が出る準備ができたナリ。");
                 } else {
                     audioManager.setEnabled(false);
