@@ -1551,6 +1551,48 @@
             function saveHighScores() {
                 localStorage.setItem(HIGH_SCORE_KEY, JSON.stringify(highScores));
             }
+            async function fetchSharedHighScores() {
+                const response = await fetch("/api/highscores", {
+                    headers: { Accept: "application/json" },
+                    cache: "no-store",
+                });
+                if (!response.ok) throw new Error("shared highscores unavailable");
+                const data = await response.json();
+                return Array.isArray(data.scores) ? data.scores : [];
+            }
+            async function syncSharedHighScores() {
+                try {
+                    const scores = await fetchSharedHighScores();
+                    highScores = scores;
+                    saveHighScores();
+                    renderHighScores();
+                } catch (e) {}
+            }
+            async function submitSharedHighScore(entry) {
+                const response = await fetch("/api/highscores", {
+                    method: "POST",
+                    headers: {
+                        Accept: "application/json",
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(entry),
+                });
+                if (!response.ok) throw new Error("shared highscore save failed");
+                const data = await response.json();
+                if (Array.isArray(data.scores)) {
+                    highScores = data.scores;
+                    saveHighScores();
+                    renderHighScores();
+                }
+                return data;
+            }
+            function localHighScoreRank(entry) {
+                highScores.push(entry);
+                highScores = highScores.sort((a, b) => b.score - a.score).slice(0, 20);
+                saveHighScores();
+                renderHighScores();
+                return highScores.indexOf(entry) + 1;
+            }
             function saveGameOverHighScore() {
                 if (score <= 0) return { saved: false, rank: null };
                 const name =
@@ -1561,13 +1603,21 @@
                     name,
                     score,
                     milestone: "GAME OVER",
+                    deviceId,
                     date: new Date().toISOString(),
                 };
-                highScores.push(entry);
-                highScores = highScores.sort((a, b) => b.score - a.score).slice(0, 20);
-                saveHighScores();
-                renderHighScores();
-                return { saved: true, rank: highScores.indexOf(entry) + 1 };
+                const rank = localHighScoreRank(entry);
+                submitSharedHighScore(entry)
+                    .then((data) => {
+                        $("gameOverHighScore").textContent =
+                            "共有ハイスコア保存完了" +
+                            (data.rank ? " / " + data.rank + "位" : "");
+                    })
+                    .catch(() => {
+                        $("gameOverHighScore").textContent =
+                            "端末内ハイスコア保存完了 / 共有保存は未設定";
+                    });
+                return { saved: true, rank };
             }
             function loadRegisteredMilestones() {
                 try {
@@ -1795,16 +1845,16 @@
                 );
                 const name = (raw || "NO NAME").trim().slice(0, 12) || "NO NAME";
                 localStorage.setItem("ikapachinkoPlayerName", name);
-                highScores.push({
+                const entry = {
                     name,
                     score,
                     milestone,
+                    deviceId,
                     date: new Date().toISOString(),
-                });
-                highScores = highScores.sort((a, b) => b.score - a.score).slice(0, 20);
-                saveHighScores();
+                };
+                localHighScoreRank(entry);
                 saveRegisteredMilestones();
-                renderHighScores();
+                submitSharedHighScore(entry).catch(() => {});
                 say(name + " を " + score + "点で登録したナリ!");
             }
             function checkHighScoreMilestones() {
@@ -3442,6 +3492,7 @@
                 requestAnimationFrame(loop);
             }
             ui();
+            syncSharedHighScores();
             updateSoundButton();
             loop();
         </script>

@@ -1,4 +1,6 @@
 .vercel
 .venv/
+node_modules/
+.env*
 .DS_Store
 assets/.DS_Store
