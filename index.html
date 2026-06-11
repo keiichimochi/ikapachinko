@@ -451,15 +451,24 @@
                     padding: 8px;
                 }
                 #boardBox {
+                    display: contents;
                     max-width: 100%;
                     width: 100%;
-                    height: clamp(480px, 74svh, 760px);
+                    height: auto;
                     flex: 0 0 auto;
                     min-height: 0;
                     aspect-ratio: auto;
                     margin: 0;
                 }
+                canvas {
+                    order: 1;
+                    width: 100%;
+                    height: auto;
+                    max-height: 74svh;
+                    aspect-ratio: 1000 / 1080;
+                }
                 #panel {
+                    order: 2;
                     width: 100%;
                     flex-direction: row;
                     flex-wrap: wrap;
@@ -489,19 +498,25 @@
                 }
                 .collectionRail {
                     position: static;
-                    display: flex;
-                    flex-wrap: wrap;
+                    display: grid;
+                    grid-template-columns: repeat(5, minmax(0, 1fr));
                     width: 100%;
                     transform: none;
+                    gap: 6px;
+                }
+                #badgeRack {
                     order: 3;
                 }
+                #cardRack {
+                    order: 4;
+                }
                 .collectionTitle {
+                    grid-column: 1 / -1;
                     width: 100%;
-                    flex: 0 0 100%;
                 }
                 .collectionSlot {
-                    width: calc((100% - 32px) / 5);
-                    max-width: 58px;
+                    width: 100%;
+                    max-width: none;
                 }
                 #rewardModel {
                     height: 300px;
@@ -1377,6 +1392,13 @@
                 [0, 4, 8],
                 [2, 4, 6],
             ];
+            const SLOT_REACH_LINES = [
+                [0, 1, 2],
+                [3, 4, 5],
+                [6, 7, 8],
+                [0, 4, 8],
+                [6, 4, 2],
+            ];
             const slot = {
                 spin: false,
                 reel: Array.from({ length: SLOT_CELLS }, (_, i) => i),
@@ -1388,6 +1410,12 @@
                 result: null,
                 winLines: [],
                 stoppedReels: [false, false, false],
+                reach: false,
+                reachTriggered: false,
+                reachLine: null,
+                reachPulse: 0,
+                outcomeText: "",
+                outcomeTimer: 0,
                 lastMult: 0,
             };
 
@@ -2164,21 +2192,26 @@
                 slot.winLines = [];
                 slot.lastMult = 0;
                 slot.stoppedReels = [false, false, false];
+                slot.reach = false;
+                slot.reachTriggered = false;
+                slot.reachLine = null;
+                slot.reachPulse = 0;
+                slot.outcomeText = "";
+                slot.outcomeTimer = 0;
                 slot.vel = Array.from(
                     { length: SLOT_CELLS },
                     (_, i) => 0.42 + i * 0.025 + Math.random() * 0.12,
                 );
-                slot.stopT = Array.from(
-                    { length: SLOT_CELLS },
-                    (_, i) =>
-                        70 +
-                        i * 18 +
-                        (i === SLOT_CELLS - 1 && Math.random() < 0.25
-                            ? 70
-                            : 0),
-                );
                 const win = Math.random() < 1 / 4;
                 slot.result = win ? makeWinningGrid() : makeLosingGrid();
+                const reachLine = findReachLineAfterColumns(slot.result, [0, 1], 2);
+                slot.reachLine = reachLine;
+                const thirdReelStop = 226;
+                const columnStops = [82, 154, reachLine ? thirdReelStop * 2 : thirdReelStop];
+                slot.stopT = Array.from(
+                    { length: SLOT_CELLS },
+                    (_, i) => columnStops[i % 3],
+                );
                 say("スロット回転中…!");
                 playSound("slot_spin_start");
             }
@@ -2190,7 +2223,8 @@
             }
             function makeWinningGrid() {
                 const grid = randomGrid();
-                const line = SLOT_LINES[Math.floor(Math.random() * SLOT_LINES.length)];
+                const line =
+                    SLOT_REACH_LINES[Math.floor(Math.random() * SLOT_REACH_LINES.length)];
                 const sym = randomSymbol();
                 for (const idx of line) grid[idx] = sym;
                 return grid;
@@ -2216,6 +2250,21 @@
                     (line) =>
                         grid[line[0]] === grid[line[1]] &&
                         grid[line[1]] === grid[line[2]],
+                );
+            }
+            function findReachLineAfterColumns(grid, stoppedCols, finalCol) {
+                return (
+                    SLOT_REACH_LINES.find((line) => {
+                        const stopped = line.filter((idx) =>
+                            stoppedCols.includes(idx % 3),
+                        );
+                        const final = line.find((idx) => idx % 3 === finalCol);
+                        return (
+                            stopped.length === 2 &&
+                            final !== undefined &&
+                            grid[stopped[0]] === grid[stopped[1]]
+                        );
+                    }) || null
                 );
             }
             function bestMultiplier(lines, grid) {
@@ -2250,9 +2299,11 @@
                 if (!slot.spin) {
                     slot.flash *= 0.96;
                     if (slot.winPulse > 0) slot.winPulse--;
+                    if (slot.outcomeTimer > 0) slot.outcomeTimer--;
                     return;
                 }
                 slot.t++;
+                if (slot.reachPulse > 0) slot.reachPulse--;
                 for (let i = 0; i < SLOT_CELLS; i++) {
                     if (slot.t < slot.stopT[i]) slot.reel[i] += slot.vel[i];
                     else {
@@ -2272,17 +2323,24 @@
                                 playSound("slot_reel_stop", {
                                     pitch: 0.94 + col * 0.08 + Math.random() * 0.04,
                                 });
+                                if (col === 1 && slot.reachLine && !slot.reachTriggered) {
+                                    triggerReach();
+                                }
                             }
                         }
                     }
                 }
                 if (slot.t > slot.stopT[SLOT_CELLS - 1] + 40) {
                     slot.spin = false;
+                    slot.reach = false;
+                    slot.reachPulse = 0;
                     slot.winLines = findWinLines(slot.result);
                     slot.lastMult = bestMultiplier(slot.winLines, slot.result);
                     if (slot.winLines.length > 0) {
                         bigWin();
                     } else {
+                        slot.outcomeText = "";
+                        slot.outcomeTimer = 0;
                         say("ハズレ…次いくナリ!");
                         playSound(hasNearMiss(slot.result) ? "slot_near_miss" : "miss_drop");
                         if (reserve > 0) {
@@ -2292,12 +2350,34 @@
                     }
                 }
             }
+            function triggerReach() {
+                slot.reach = true;
+                slot.reachTriggered = true;
+                slot.reachPulse = 190;
+                say("リーチ! 最後のリールに魂を込めるナリ!");
+                playSound("slot_near_miss", { volume: 0.45 });
+                popup(SLOT_RECT.x + SLOT_RECT.w / 2, SLOT_RECT.y + 40, "リーチ!", "#ff4fa3");
+                for (let i = 0; i < 32; i++) {
+                    FX.push({
+                        x: SLOT_RECT.x + 36 + Math.random() * (SLOT_RECT.w - 72),
+                        y: SLOT_RECT.y + 60 + Math.random() * (SLOT_RECT.h - 110),
+                        vx: (Math.random() - 0.5) * 5,
+                        vy: -1 - Math.random() * 4,
+                        t: ["リーチ!", "CHANCE", "★", "!!"][i % 4],
+                        c: ["#ff4fa3", "#ffd93b", "#37c8f0", "#ffffff"][i % 4],
+                        life: 45 + Math.random() * 45,
+                    });
+                }
+            }
             function bigWin() {
                 wins++;
                 fever = 60 * 18;
                 feverCatch = 0;
                 slot.flash = 1;
                 slot.winPulse = 180;
+                slot.reach = false;
+                slot.outcomeText = "当たり🎯  大当たり🪎";
+                slot.outcomeTimer = 210;
                 stock += slot.lastMult;
                 addScore(slot.lastMult, "slot", SLOT_RECT.x + SLOT_RECT.w / 2, SLOT_RECT.y + 40);
                 for (const pk of pockets)
@@ -2874,7 +2954,69 @@
                     ctx.lineWidth = 1;
                     ctx.strokeRect(rx, ry, cellW, cellH);
                 }
+                if (slot.reachPulse > 0 && slot.reachLine) {
+                    const pulse = 0.5 + 0.5 * Math.sin(slot.t * 0.35);
+                    ctx.save();
+                    ctx.lineCap = "round";
+                    ctx.lineJoin = "round";
+                    ctx.shadowColor = "#ff4fa3";
+                    ctx.shadowBlur = 22 + pulse * 18;
+                    ctx.strokeStyle = `rgba(255,79,163,${0.65 + pulse * 0.3})`;
+                    ctx.lineWidth = 7 + pulse * 5;
+                    ctx.beginPath();
+                    for (let n = 0; n < slot.reachLine.length; n++) {
+                        const idx = slot.reachLine[n],
+                            col = idx % 3,
+                            row = Math.floor(idx / 3),
+                            cx = gridX + col * (cellW + gap) + cellW / 2,
+                            cy = gridY + row * (cellH + gap) + cellH / 2;
+                        if (n === 0) ctx.moveTo(cx, cy);
+                        else ctx.lineTo(cx, cy);
+                    }
+                    ctx.stroke();
+                    ctx.restore();
+                }
                 ctx.restore();
+                if (slot.reachPulse > 0) {
+                    const pulse = 0.5 + 0.5 * Math.sin(slot.t * 0.42);
+                    ctx.save();
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "middle";
+                    ctx.translate(x + w / 2, y + h / 2);
+                    ctx.rotate(Math.sin(slot.t * 0.18) * 0.05);
+                    ctx.font = "900 " + Math.round(54 + pulse * 18) + "px sans-serif";
+                    ctx.lineWidth = 10;
+                    ctx.strokeStyle = "#160014";
+                    ctx.shadowColor = "#ffd93b";
+                    ctx.shadowBlur = 26 + pulse * 22;
+                    ctx.strokeText("リーチ!", 0, -4);
+                    ctx.fillStyle = pulse > 0.55 ? "#ffd93b" : "#ff4fa3";
+                    ctx.fillText("リーチ!", 0, -4);
+                    ctx.font = "900 20px sans-serif";
+                    ctx.fillStyle = "#ffffff";
+                    ctx.shadowBlur = 10;
+                    ctx.fillText("LAST REEL CHANCE", 0, 42);
+                    ctx.restore();
+                }
+                if (slot.outcomeTimer > 0 && slot.outcomeText) {
+                    const pulse = 0.5 + 0.5 * Math.sin(slot.outcomeTimer * 0.22);
+                    ctx.save();
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "middle";
+                    ctx.translate(x + w / 2, y + h / 2);
+                    ctx.font =
+                        "900 " +
+                        Math.round(slot.lastMult > 0 ? 36 + pulse * 10 : 24) +
+                        "px sans-serif";
+                    ctx.lineWidth = slot.lastMult > 0 ? 9 : 6;
+                    ctx.strokeStyle = "#060006";
+                    ctx.shadowColor = slot.lastMult > 0 ? "#ffd93b" : "#37c8f0";
+                    ctx.shadowBlur = slot.lastMult > 0 ? 34 + pulse * 24 : 16;
+                    ctx.strokeText(slot.outcomeText, 0, 0);
+                    ctx.fillStyle = slot.lastMult > 0 ? "#ffd93b" : "#ffffff";
+                    ctx.fillText(slot.outcomeText, 0, 0);
+                    ctx.restore();
+                }
                 ctx.textBaseline = "alphabetic";
                 ctx.textAlign = "center";
                 ctx.font = "bold 17px monospace";
