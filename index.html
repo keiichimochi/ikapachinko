@@ -121,6 +121,27 @@
                 border-radius: 4px;
                 box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
             }
+            .rangeCard {
+                min-width: 140px;
+            }
+            .rangeRow {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            #fireRateRange {
+                width: 100%;
+                accent-color: var(--neon-cyan);
+                touch-action: manipulation;
+            }
+            #fireRateValue {
+                min-width: 58px;
+                text-align: right;
+                font-size: 12px;
+                font-weight: 900;
+                color: #ffd93b;
+                font-variant-numeric: tabular-nums;
+            }
             #fireBtn {
                 width: 100%;
                 padding: 14px 0;
@@ -211,6 +232,17 @@
                 font-weight: 900;
                 text-shadow: 0 0 10px rgba(255, 217, 59, 0.45);
             }
+            #highScoreList {
+                display: grid;
+                gap: 3px;
+                font-size: 10px;
+                line-height: 1.25;
+                color: #d8d8e2;
+                font-variant-numeric: tabular-nums;
+            }
+            #highScoreList .empty {
+                color: #777786;
+            }
             #feverBadge {
                 display: none;
                 text-align: center;
@@ -300,8 +332,16 @@
                     <div class="num small" id="winCount">0</div>
                 </div>
                 <div class="card">
+                    <div class="lbl">スコア</div>
+                    <div class="num" id="scoreCount">0</div>
+                </div>
+                <div class="card">
                     <div class="lbl">倍率</div>
                     <div id="oddsList"></div>
+                </div>
+                <div class="card">
+                    <div class="lbl">ハイスコア</div>
+                    <div id="highScoreList"></div>
                 </div>
                 <div class="card">
                     <div class="lbl">発射強度</div>
@@ -310,6 +350,20 @@
                             <div id="powerFill"></div>
                             <div id="powerKnob"></div>
                         </div>
+                    </div>
+                </div>
+                <div class="card rangeCard">
+                    <div class="lbl">発射間隔</div>
+                    <div class="rangeRow">
+                        <input
+                            id="fireRateRange"
+                            type="range"
+                            min="4"
+                            max="60"
+                            step="1"
+                            value="18"
+                        />
+                        <div id="fireRateValue">18F</div>
                     </div>
                 </div>
                 <button id="fireBtn">発 射</button>
@@ -357,6 +411,15 @@
             const NO_PIN_ZONE = SLOT_SAFE_ZONE;
             const cv = document.getElementById("cv");
             const ctx = cv.getContext("2d");
+            const gachaVideo = document.createElement("video");
+            gachaVideo.src = "assets/movie/gacha.mp4";
+            gachaVideo.muted = true;
+            gachaVideo.playsInline = true;
+            gachaVideo.preload = "auto";
+            let gachaMovieFrames = 0;
+            gachaVideo.addEventListener("ended", () => {
+                gachaMovieFrames = 0;
+            });
             let DPR = 1;
             function resize() {
                 DPR = Math.min(window.devicePixelRatio || 1, 2);
@@ -469,6 +532,7 @@
                     this.loops = new Map();
                     this.lastPlay = new Map();
                     this.pinDuckUntil = 0;
+                    this.enabled = localStorage.getItem("ikapachinkoSound") !== "off";
                     this.master = 0.9;
                 }
                 ensureContext() {
@@ -479,6 +543,7 @@
                     return this.ctx;
                 }
                 unlock() {
+                    if (!this.enabled) return Promise.resolve();
                     const ctx2 = this.ensureContext();
                     if (!ctx2) return Promise.resolve();
                     const resumed =
@@ -497,6 +562,13 @@
                     } catch (e) {}
                     this.preload();
                     return resumed;
+                }
+                setEnabled(enabled) {
+                    this.enabled = enabled;
+                    localStorage.setItem("ikapachinkoSound", enabled ? "on" : "off");
+                    if (!enabled) {
+                        for (const id of [...this.loops.keys()]) this.stop(id);
+                    }
                 }
                 preload() {
                     Object.entries(this.defs).forEach(([id, def]) =>
@@ -540,6 +612,7 @@
                     return min + Math.random() * (max - min);
                 }
                 play(id, options = {}) {
+                    if (!this.enabled && !options.force) return;
                     const def = this.defs[id];
                     const ctx2 = this.ensureContext();
                     if (!def || !ctx2) return;
@@ -629,6 +702,7 @@
                     osc.stop(ctx2.currentTime + shape[1]);
                 }
                 loop(id, options = {}) {
+                    if (!this.enabled) return;
                     if (this.loops.has(id)) return;
                     const def = this.defs[id];
                     const ctx2 = this.ensureContext();
@@ -676,14 +750,19 @@
             const audioManager = new AudioManager(SFX_DEFS);
             window.SFX_DEFS = SFX_DEFS;
             window.audioManager = audioManager;
+            let soundToggleReady = false;
             function updateSoundButton() {
                 const btn = document.getElementById("soundBtn");
                 if (!btn) return;
-                const on = Boolean(audioManager.ctx && audioManager.ctx.state === "running");
+                const on = audioManager.enabled;
                 btn.classList.toggle("on", on);
-                btn.textContent = on ? "SOUND ON" : "SOUND";
+                btn.textContent = on ? "SOUND ON" : "SOUND OFF";
             }
             function requestSoundUnlock() {
+                if (!audioManager.enabled) {
+                    updateSoundButton();
+                    return Promise.resolve();
+                }
                 const unlocked = audioManager.unlock();
                 updateSoundButton();
                 unlocked.then(updateSoundButton);
@@ -967,25 +1046,26 @@
             }
 
             /* --- pockets --- */
-            function pocket(x, y, w, type, label) {
+            function pocket(x, y, w, type, label, scoreValue = 0) {
                 pockets.push({
                     x,
                     y,
                     w,
                     type,
                     label,
+                    scoreValue,
                     open: type !== "attacker",
                     glow: 0,
                     catchCount: 0,
                 });
             }
             pocket(500, 705, 30, "start", "START"); // center start chucker (spins the slot)
-            pocket(360, 712, 24, "tulip", "🛸"); // small UFO tulips
-            pocket(640, 712, 24, "tulip", "🛸");
-            pocket(228, 668, 30, "tulip", "🛸"); // outer UFO pockets
-            pocket(772, 668, 30, "tulip", "🛸");
-            pocket(355, 792, 32, "tulip", "🛸");
-            pocket(645, 792, 32, "tulip", "🛸");
+            pocket(360, 712, 24, "tulip", "🛸", 1); // near-center tulips
+            pocket(640, 712, 24, "tulip", "🛸", 1);
+            pocket(228, 668, 30, "tulip", "🛸", 5); // harder outer UFO pockets
+            pocket(772, 668, 30, "tulip", "🛸", 5);
+            pocket(355, 792, 32, "tulip", "🛸", 5); // deeper lower tulips
+            pocket(645, 792, 32, "tulip", "🛸", 5);
             pocket(500, 902, 46, "attacker", "ATTACK"); // big attacker (fever only)
 
             /* ---------- game state ---------- */
@@ -994,15 +1074,22 @@
             const tentacleFX = [];
             let stock = 250,
                 wins = 0,
+                score = 0,
                 power = 0.8,
                 autoFire = true,
-                autoTimer = 0;
+                autoTimer = 0,
+                autoFireInterval = 18;
             let tentacleSpawnTimer = 45;
             let frameCount = 0;
             let fever = 0; // frames remaining
             let feverCatch = 0;
             let reserve = 0; // 保留 (queued spins) max 4
             let debugGeometry = false;
+            const HIGH_SCORE_KEY = "ikapachinkoHighScores";
+            const HIGH_SCORE_MILESTONE_KEY = "ikapachinkoScoreMilestones";
+            const HIGH_SCORE_MILESTONES = [500, 1000, 2000, 3000, 10000];
+            let highScores = loadHighScores();
+            let registeredMilestones = loadRegisteredMilestones();
             const SLOT_SYMBOLS = [
                 { sym: "🦑", mult: 100 },
                 { sym: "🍺", mult: 50 },
@@ -1041,11 +1128,40 @@
             };
 
             const $ = (id) => document.getElementById(id);
+            function loadHighScores() {
+                try {
+                    const parsed = JSON.parse(localStorage.getItem(HIGH_SCORE_KEY) || "[]");
+                    return Array.isArray(parsed) ? parsed : [];
+                } catch (e) {
+                    return [];
+                }
+            }
+            function saveHighScores() {
+                localStorage.setItem(HIGH_SCORE_KEY, JSON.stringify(highScores));
+            }
+            function loadRegisteredMilestones() {
+                try {
+                    const parsed = JSON.parse(
+                        localStorage.getItem(HIGH_SCORE_MILESTONE_KEY) || "[]",
+                    );
+                    return new Set(Array.isArray(parsed) ? parsed : []);
+                } catch (e) {
+                    return new Set();
+                }
+            }
+            function saveRegisteredMilestones() {
+                localStorage.setItem(
+                    HIGH_SCORE_MILESTONE_KEY,
+                    JSON.stringify([...registeredMilestones]),
+                );
+            }
             function ui() {
                 $("ballCount").textContent = stock;
                 $("winCount").textContent = wins;
+                $("scoreCount").textContent = score;
                 $("feverBadge").style.display = fever > 0 ? "block" : "none";
                 renderOdds();
+                renderHighScores();
             }
             function say(t) {
                 $("msg").textContent = t;
@@ -1061,6 +1177,60 @@
                         return item;
                     }),
                 );
+            }
+            function renderHighScores() {
+                const list = $("highScoreList");
+                const top = [...highScores].sort((a, b) => b.score - a.score).slice(0, 5);
+                if (top.length === 0) {
+                    const empty = document.createElement("div");
+                    empty.className = "empty";
+                    empty.textContent = "未登録";
+                    list.replaceChildren(empty);
+                    return;
+                }
+                list.replaceChildren(
+                    ...top.map((entry, i) => {
+                        const row = document.createElement("div");
+                        row.textContent =
+                            i + 1 + ". " + entry.name + " " + entry.score + "点";
+                        return row;
+                    }),
+                );
+            }
+            function registerHighScore(milestone) {
+                const raw = prompt(
+                    milestone +
+                        "点突破! ハイスコア名を入力してください",
+                    localStorage.getItem("ikapachinkoPlayerName") || "IKA",
+                );
+                const name = (raw || "NO NAME").trim().slice(0, 12) || "NO NAME";
+                localStorage.setItem("ikapachinkoPlayerName", name);
+                highScores.push({
+                    name,
+                    score,
+                    milestone,
+                    date: new Date().toISOString(),
+                });
+                highScores = highScores.sort((a, b) => b.score - a.score).slice(0, 20);
+                saveHighScores();
+                saveRegisteredMilestones();
+                renderHighScores();
+                say(name + " を " + score + "点で登録したナリ!");
+            }
+            function checkHighScoreMilestones() {
+                const crossed = HIGH_SCORE_MILESTONES.filter((m) => score > m);
+                const fresh = crossed.filter((m) => !registeredMilestones.has(m));
+                if (fresh.length === 0) return;
+                crossed.forEach((m) => registeredMilestones.add(m));
+                saveRegisteredMilestones();
+                registerHighScore(Math.max(...fresh));
+            }
+            function addScore(points, reason, x = CX, y = CY) {
+                if (points <= 0) return;
+                score += points;
+                popup(x, y, "+" + points + " SCORE", "#ffd93b");
+                ui();
+                setTimeout(checkHighScoreMilestones, 50);
             }
 
             /* ---------- launching ---------- */
@@ -1571,6 +1741,7 @@
                 } else if (pk.type === "tulip") {
                     pk.catchCount++;
                     stock += 5;
+                    addScore(pk.scoreValue, "tulip", pk.x, pk.y - 44);
                     popup(pk.x, pk.y - 30, "+5", "#37c8f0");
                     playSound("tulip_open");
                     setTimeout(() => playSound("tulip_close", { volume: 0.2 }), 180);
@@ -1653,6 +1824,17 @@
                     0,
                 );
             }
+            function playGachaMovie() {
+                const seconds = Math.max(3, Math.min(7, gachaVideo.duration || 4));
+                gachaMovieFrames = Math.ceil(seconds * 60);
+                try {
+                    gachaVideo.currentTime = 0;
+                    const playback = gachaVideo.play();
+                    if (playback && playback.catch) playback.catch(() => {});
+                } catch (e) {
+                    gachaVideo.load();
+                }
+            }
             function hasNearMiss(grid) {
                 return SLOT_LINES.some((line) => {
                     const values = line.map((idx) => grid[idx]);
@@ -1716,6 +1898,7 @@
                 slot.flash = 1;
                 slot.winPulse = 180;
                 stock += slot.lastMult;
+                addScore(slot.lastMult, "slot", SLOT_RECT.x + SLOT_RECT.w / 2, SLOT_RECT.y + 40);
                 for (const pk of pockets)
                     if (pk.type === "attacker") pk.open = true;
                 const bestLine = slot.winLines.reduce((best, line) =>
@@ -1736,6 +1919,7 @@
                 );
                 playSound(slot.lastMult >= 50 ? "jackpot_big" : "jackpot_small");
                 playSound("attack_ready");
+                if (slot.lastMult >= 10) playGachaMovie();
                 for (let i = 0; i < 80; i++)
                     FX.push({
                         x: CX + (Math.random() - 0.5) * 300,
@@ -2180,6 +2364,42 @@
                 ctx.arcTo(x, y, x + w, y, r);
                 ctx.closePath();
             }
+            function drawCoverVideo(video, x, y, w, h) {
+                const vw = video.videoWidth || 16,
+                    vh = video.videoHeight || 9,
+                    scale = Math.max(w / vw, h / vh),
+                    sw = w / scale,
+                    sh = h / scale,
+                    sx = (vw - sw) / 2,
+                    sy = (vh - sh) / 2;
+                ctx.drawImage(video, sx, sy, sw, sh, x, y, w, h);
+            }
+            function drawGachaMovie(x, y, w, h) {
+                if (gachaMovieFrames <= 0) return false;
+                ctx.save();
+                rr(x, y, w, h, 12);
+                ctx.clip();
+                ctx.fillStyle = "#020205";
+                ctx.fillRect(x, y, w, h);
+                if (gachaVideo.readyState >= 2 && gachaVideo.videoWidth > 0) {
+                    drawCoverVideo(gachaVideo, x, y, w, h);
+                } else {
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "middle";
+                    ctx.font = "bold 34px monospace";
+                    ctx.fillStyle = "#ffd93b";
+                    ctx.fillText("GACHA", x + w / 2, y + h / 2);
+                }
+                const pulse = 0.55 + 0.45 * Math.sin(performance.now() / 90);
+                ctx.fillStyle = `rgba(255,217,59,${0.18 + pulse * 0.12})`;
+                ctx.fillRect(x, y, w, h);
+                ctx.strokeStyle = `rgba(255,217,59,${0.55 + pulse * 0.35})`;
+                ctx.lineWidth = 5;
+                rr(x + 3, y + 3, w - 6, h - 6, 10);
+                ctx.stroke();
+                ctx.restore();
+                return true;
+            }
             function drawSlotPanel() {
                 const x = SLOT_RECT.x,
                     y = SLOT_RECT.y,
@@ -2192,6 +2412,15 @@
                 ctx.save();
                 rr(x + 22, y + 58, w - 44, h - 110, 12);
                 ctx.clip();
+                if (drawGachaMovie(x + 22, y + 58, w - 44, h - 110)) {
+                    ctx.restore();
+                    ctx.textBaseline = "alphabetic";
+                    ctx.textAlign = "center";
+                    ctx.font = "bold 17px monospace";
+                    ctx.fillStyle = "#ffd93b";
+                    ctx.fillText("GACHA BONUS x" + slot.lastMult, x + w / 2, y + h - 20);
+                    return;
+                }
                 const gridX = x + 32,
                     gridY = y + 68,
                     gap = 8,
@@ -2259,13 +2488,22 @@
             /* ---------- input ---------- */
             const track = $("powerTrack"),
                 fill = $("powerFill"),
-                knob = $("powerKnob");
+                knob = $("powerKnob"),
+                fireRateRange = $("fireRateRange"),
+                fireRateValue = $("fireRateValue");
             function setPower(v) {
                 power = Math.max(0.05, Math.min(1, v));
                 fill.style.height = power * 100 + "%";
                 knob.style.bottom = "calc(" + power * 100 + "% - 7px)";
             }
             setPower(0.8);
+            function setFireInterval(v) {
+                autoFireInterval = Math.max(4, Math.min(60, Math.round(v)));
+                fireRateRange.value = autoFireInterval;
+                const shotsPerSecond = (60 / autoFireInterval).toFixed(1);
+                fireRateValue.textContent = autoFireInterval + "F / " + shotsPerSecond + "発/s";
+            }
+            setFireInterval(18);
             let dragging = false;
             function trackEv(e) {
                 const r = track.getBoundingClientRect();
@@ -2281,6 +2519,13 @@
                 if (dragging) trackEv(e);
             });
             addEventListener("pointerup", () => (dragging = false));
+            fireRateRange.addEventListener("input", (e) => {
+                setFireInterval(e.target.value);
+            });
+            fireRateRange.addEventListener("change", () => {
+                playSound("ui_click");
+                say("AUTO発射間隔 " + autoFireInterval + "F に変更したナリ。");
+            });
             $("fireBtn").addEventListener("click", () => {
                 requestSoundUnlock();
                 playSound("ui_click");
@@ -2295,9 +2540,26 @@
                     "AUTO 連射 " + (autoFire ? "ON" : "OFF");
             });
             $("soundBtn").addEventListener("click", () => {
-                requestSoundUnlock();
-                playSound("ui_click", { cooldown: 0 });
-                say("SOUND ON。音が出る準備ができたナリ。");
+                if (!audioManager.enabled) {
+                    audioManager.setEnabled(true);
+                    soundToggleReady = true;
+                    updateSoundButton();
+                    requestSoundUnlock().then(() =>
+                        playSound("ui_click", { cooldown: 0, force: true }),
+                    );
+                    say("SOUND ON。音が出る準備ができたナリ。");
+                } else if (!soundToggleReady) {
+                    soundToggleReady = true;
+                    requestSoundUnlock().then(() =>
+                        playSound("ui_click", { cooldown: 0, force: true }),
+                    );
+                    say("SOUND ON。音が出る準備ができたナリ。");
+                } else {
+                    audioManager.setEnabled(false);
+                    soundToggleReady = false;
+                    updateSoundButton();
+                    say("SOUND OFF。静かに遊ぶナリ。");
+                }
             });
             addEventListener("keydown", (e) => {
                 if (e.code === "Space") {
@@ -2307,6 +2569,8 @@
                 }
                 if (e.code === "ArrowUp") setPower(power + 0.03);
                 if (e.code === "ArrowDown") setPower(power - 0.03);
+                if (e.code === "BracketLeft") setFireInterval(autoFireInterval + 1);
+                if (e.code === "BracketRight") setFireInterval(autoFireInterval - 1);
                 if (e.code === "KeyD") {
                     debugGeometry = !debugGeometry;
                     say(
@@ -2321,21 +2585,23 @@
             function loop() {
                 step();
                 updateSlot();
+                if (gachaMovieFrames > 0) gachaMovieFrames--;
                 if (fever > 0) {
                     fever--;
                     if (fever === 0) endFever("FEVER終了!");
                 }
                 if (autoFire) {
                     autoTimer++;
-                    if (autoTimer >= 36) {
+                    if (autoTimer >= autoFireInterval) {
                         autoTimer = 0;
                         launch();
                     }
-                } // 100発/分
+                }
                 draw();
                 requestAnimationFrame(loop);
             }
             ui();
+            updateSoundButton();
             loop();
         </script>
     </body>
