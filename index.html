@@ -305,6 +305,18 @@
                 overflow-wrap: anywhere;
                 text-shadow: 0 0 8px rgba(255, 217, 59, 0.55);
             }
+            .collectionSlot.hasThumb::after {
+                content: "";
+            }
+            .collectionThumb {
+                position: absolute;
+                inset: 12px 2px 2px;
+                width: calc(100% - 4px);
+                height: calc(100% - 14px);
+                pointer-events: none;
+                --poster-color: transparent;
+                background: transparent;
+            }
             .collectionSlot.justUnlocked {
                 animation: prizePop 0.85s ease-out 1;
             }
@@ -1417,7 +1429,7 @@
                 autoFire = true,
                 autoTimer = 0,
                 autoFireInterval = 18;
-            const BALLS_PER_LAUNCH = 3;
+            const BALLS_PER_LAUNCH = 2;
             let tentacleSpawnTimer = 45;
             let frameCount = 0;
             let fever = 0; // frames remaining
@@ -1431,13 +1443,22 @@
             const DEVICE_ID_KEY = "ikapachinkoDeviceId";
             const HIGH_SCORE_MILESTONES = [500, 1000, 2000, 3000, 10000];
             const PRIZE_ASSETS = [
+                { id: "allice", name: "ALLICE", file: "assets/keihin/allice.glb" },
                 { id: "chaiyo", name: "CHAIYO", file: "assets/keihin/chaiyo.glb" },
+                { id: "foryou", name: "FOR YOU", file: "assets/keihin/foryou.glb" },
                 {
                     id: "kiyoshi-grass",
                     name: "KIYOSHI GRASS",
                     file: "assets/keihin/kiyoshi-grass.glb",
                 },
+                { id: "murata", name: "MURATA", file: "assets/keihin/murata.glb" },
                 { id: "okonomi", name: "OKONOMI", file: "assets/keihin/okonomi.glb" },
+                {
+                    id: "sushiyoshi",
+                    name: "SUSHIYOSHI",
+                    file: "assets/keihin/sushiyoshi.glb",
+                },
+                { id: "yakisoba", name: "YAKISOBA", file: "assets/keihin/yakisoba.glb" },
             ];
             const PRIZE_TYPES = [
                 { type: "badge", label: "バッジ", rackId: "badgeRack", prefix: "B" },
@@ -1478,6 +1499,8 @@
             const SYMS = SLOT_SYMBOLS.map((s) => s.sym);
             const MULTS = SLOT_SYMBOLS.map((s) => s.mult);
             const symbolHitCounts = Array(SLOT_SYMBOLS.length).fill(0);
+            const SLOT_BASE_WIN_RATE = 1 / 4;
+            const FEVER_SLOT_ODDS_MULTIPLIER = 3;
             const SLOT_CELLS = 9;
             const SLOT_LINES = [
                 [0, 1, 2],
@@ -1670,12 +1693,34 @@
                         if (!slotNode) continue;
                         const collected = prizeCollection.has(prize.id);
                         slotNode.classList.toggle("collected", collected);
+                        slotNode.classList.toggle(
+                            "hasThumb",
+                            collected && prize.type === "badge",
+                        );
                         slotNode.dataset.short = collected
                             ? prize.assetName.replace(/\s+/g, "\n")
                             : "";
                         slotNode.title = collected
                             ? prize.title + " / " + prize.assetName
                             : prize.title + " / 未獲得";
+                        let thumb = slotNode.querySelector(".collectionThumb");
+                        if (collected && prize.type === "badge") {
+                            if (!thumb) {
+                                thumb = document.createElement("model-viewer");
+                                thumb.className = "collectionThumb";
+                                thumb.setAttribute("disable-zoom", "");
+                                thumb.setAttribute("interaction-prompt", "none");
+                                thumb.setAttribute("camera-orbit", "0deg 0deg 120%");
+                                thumb.setAttribute("field-of-view", "30deg");
+                                thumb.setAttribute("alt", prize.title + " thumbnail");
+                                slotNode.appendChild(thumb);
+                            }
+                            if (thumb.getAttribute("src") !== prize.assetFile) {
+                                thumb.setAttribute("src", prize.assetFile);
+                            }
+                        } else if (thumb) {
+                            thumb.remove();
+                        }
                     }
                 }
             }
@@ -2407,7 +2452,11 @@
                     { length: SLOT_CELLS },
                     (_, i) => 0.42 + i * 0.025 + Math.random() * 0.12,
                 );
-                const win = Math.random() < 1 / 4;
+                const winRate = Math.min(
+                    1,
+                    SLOT_BASE_WIN_RATE * (fever > 0 ? FEVER_SLOT_ODDS_MULTIPLIER : 1),
+                );
+                const win = Math.random() < winRate;
                 slot.result = win ? makeWinningGrid() : makeLosingGrid();
                 const reachLine = findReachLineAfterColumns(slot.result, [0, 1], 2);
                 slot.reachLine = reachLine;
